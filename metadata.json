@@ -1,0 +1,6 @@
+{
+  "name": "Crypt0 Cr3w",
+  "description": "Hack Ex 2 log parser, screenshot OCR indexer, intelligence database, and operational analytics for Crypt0 Cr3w Central by m0lt0rn.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
