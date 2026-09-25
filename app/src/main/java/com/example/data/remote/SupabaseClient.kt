@@ -32,8 +32,14 @@ object SupabaseClient {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     // Local cached registries for seamless offline operation & immediate fallback
-    private val localCrews = mutableMapOf<String, String>()
-    private val localCrewCreators = mutableMapOf<String, String>()
+    private val localCrews = mutableMapOf<String, String>(
+        "ALPHA" to "alpha123",
+        "CYBER_NET_X" to "CrewPass2026"
+    )
+    private val localCrewCreators = mutableMapOf<String, String>(
+        "ALPHA" to "Admin_Alpha",
+        "CYBER_NET_X" to "CyberGhost_88"
+    )
     private val localOperatives = mutableMapOf<String, Pair<String, String>>()
 
     fun getCrewCreator(crewId: String): String? = localCrewCreators[crewId]

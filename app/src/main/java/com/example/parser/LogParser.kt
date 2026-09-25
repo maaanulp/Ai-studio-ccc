@@ -31,98 +31,88 @@ object LogParser {
             .filter { it.isNotEmpty() }
 
         val parsedRaids = mutableListOf<ParsedRaid>()
-        var pendingIp: String? = null
-        var pendingTimeStr: String = ""
-        var pendingHour: Int = 12
         var ignoredMasked = 0
+        val usedIndices = BooleanArray(lines.size)
 
-        // Parse from bottom to top chronologically as specified
+        // Parse from bottom to top (in Hack EX 2, logs are chronologically inverted: newest at top)
         for (i in lines.indices.reversed()) {
+            if (usedIndices[i]) continue
             val line = lines[i]
-            val timeMatch = TIMESTAMP_REGEX.find(line)
-            val timeStr = timeMatch?.groupValues?.get(1) ?: "00-00 00:00"
-            val hour = timeMatch?.groupValues?.get(2)?.toIntOrNull() ?: 12
 
             val accessMatch = ACCESS_REGEX.find(line)
             if (accessMatch != null) {
                 val ip = accessMatch.groupValues[1].trim()
                 if (ip.contains("xxx", ignoreCase = true) || ip.contains("***")) {
                     ignoredMasked++
-                    pendingIp = null
-                } else {
-                    pendingIp = ip
-                    pendingTimeStr = timeStr
-                    pendingHour = hour
+                    usedIndices[i] = true
+                    continue
                 }
-                continue
-            }
+                usedIndices[i] = true
 
-            val stoleMatch = STOLE_REGEX.find(line)
-            if (stoleMatch != null) {
-                val amountStr = stoleMatch.groupValues[1].replace(",", "").trim()
-                val amount = amountStr.toLongOrNull() ?: 0L
-                val wallet = stoleMatch.groupValues[2].trim()
-
-                if (pendingIp != null) {
-                    parsedRaids.add(
-                        ParsedRaid(
-                            ip = pendingIp,
-                            wallet = wallet,
-                            stolenCrypto = amount,
-                            timestampStr = pendingTimeStr.ifBlank { timeStr },
-                            hour = pendingHour
-                        )
-                    )
-                    pendingIp = null
-                } else {
-                    // Stole line without a preceding access line right after
-                    // Look ahead in remaining lines (which are higher up) or record as orphan if possible
-                    // In bottom-to-top sequence: accessed comes first, then stole is above it.
-                    // If we encounter a stole line first without pending IP, hold it or check if next line is access
-                }
-            }
-        }
-
-        // If bottom-to-top direct pairing had inverted pairing or adjacent lines:
-        // Also do a resilient pass if parsedRaids is empty
-        if (parsedRaids.isEmpty()) {
-            var lastSeenIp: String? = null
-            var lastSeenTime = ""
-            var lastSeenHour = 12
-            for (i in lines.indices.reversed()) {
-                val line = lines[i]
                 val timeMatch = TIMESTAMP_REGEX.find(line)
-                val timeStr = timeMatch?.groupValues?.get(1) ?: ""
+                val timeStr = timeMatch?.groupValues?.get(1) ?: "00-00 00:00"
                 val hour = timeMatch?.groupValues?.get(2)?.toIntOrNull() ?: 12
 
-                val accessMatch = ACCESS_REGEX.find(line)
-                if (accessMatch != null) {
-                    val ip = accessMatch.groupValues[1].trim()
-                    if (!ip.contains("xxx", ignoreCase = true) && !ip.contains("***")) {
-                        lastSeenIp = ip
-                        lastSeenTime = timeStr
-                        lastSeenHour = hour
-                    } else {
-                        ignoredMasked++
+                // Primary check: look directly above (i - 1 downTo 0) for the matching Stole line
+                var foundStoleIndex = -1
+                for (j in (i - 1) downTo 0) {
+                    if (usedIndices[j]) continue
+                    val candLine = lines[j]
+                    if (ACCESS_REGEX.containsMatchIn(candLine)) {
+                        val candAccess = ACCESS_REGEX.find(candLine)?.groupValues?.get(1)?.trim() ?: ""
+                        if (candAccess.contains("xxx", ignoreCase = true) || candAccess.contains("***")) {
+                            ignoredMasked++
+                            usedIndices[j] = true
+                            continue // Skip masked IP access line
+                        } else {
+                            break // Hit another valid access line
+                        }
+                    }
+                    if (STOLE_REGEX.containsMatchIn(candLine)) {
+                        foundStoleIndex = j
+                        break
                     }
                 }
 
-                val stoleMatch = STOLE_REGEX.find(line)
-                if (stoleMatch != null && lastSeenIp != null) {
-                    val amountStr = stoleMatch.groupValues[1].replace(",", "").trim()
-                    val amount = amountStr.toLongOrNull() ?: 0L
+                // Secondary check: look below (i + 1 until lines.size)
+                if (foundStoleIndex == -1) {
+                    for (j in (i + 1) until lines.size) {
+                        if (usedIndices[j]) continue
+                        val candLine = lines[j]
+                        if (ACCESS_REGEX.containsMatchIn(candLine)) break
+                        if (STOLE_REGEX.containsMatchIn(candLine)) {
+                            foundStoleIndex = j
+                            break
+                        }
+                    }
+                }
+
+                if (foundStoleIndex != -1) {
+                    usedIndices[foundStoleIndex] = true
+                    val stoleLine = lines[foundStoleIndex]
+                    val stoleMatch = STOLE_REGEX.find(stoleLine)!!
+                    val amount = stoleMatch.groupValues[1].replace(",", "").trim().toLongOrNull() ?: 0L
                     val wallet = stoleMatch.groupValues[2].trim()
 
                     parsedRaids.add(
                         ParsedRaid(
-                            ip = lastSeenIp,
+                            ip = ip,
                             wallet = wallet,
                             stolenCrypto = amount,
-                            timestampStr = if (timeStr.isNotBlank()) timeStr else lastSeenTime,
+                            timestampStr = timeStr,
                             hour = hour
                         )
                     )
-                    lastSeenIp = null
+                } else {
+                    parsedRaids.add(
+                        ParsedRaid(
+                            ip = ip,
+                            wallet = "",
+                            stolenCrypto = 0L,
+                            timestampStr = timeStr,
+                            hour = hour
+                        )
+                    )
                 }
             }
         }
@@ -137,39 +127,29 @@ object LogParser {
             val hitCount = raids.size
             val avgPerHit = if (hitCount > 0) totalStolen / hitCount else 0L
 
-            // Find peak hour
-            val hourCounts = raids.groupBy { it.hour }
-            val bestHour = hourCounts.maxByOrNull { entry -> entry.value.sumOf { it.stolenCrypto } }?.key ?: 12
-            val peakHourStr = String.format("%02d:00", bestHour)
-
-            // Approximate CR/H: estimated hourly generation
-            val estCrPerHour = (avgPerHit * 3.5).toLong().coerceAtLeast(450L)
-
-            val primaryWallet = raids.lastOrNull { it.wallet.isNotBlank() }?.wallet ?: ""
-
-            // Calculate mock reasonable default level & FW from raid amounts if unknown
-            val estimatedLvl = (avgPerHit / 35).toInt().coerceIn(10, 150)
-            val estimatedFw = (estimatedLvl * 0.8).toInt().coerceIn(5, 120)
-            val estimatedEnc = (estimatedLvl * 0.85).toInt().coerceIn(5, 120)
-            val estimatedRep = (totalStolen / 10).toInt().coerceIn(100, 99999)
+            val hourCounts = raids.groupingBy { it.hour }.eachCount()
+            val peakHourVal = hourCounts.maxByOrNull { it.value }?.key ?: 12
+            val peakHourStr = String.format("%02d:00", peakHourVal)
+            val primaryWallet = raids.firstOrNull { it.wallet.isNotBlank() }?.wallet ?: ""
 
             targetEntities.add(
                 TargetEntity(
                     ip = ip,
-                    name = "Target_${ip.substringAfterLast('.')}",
-                    level = estimatedLvl,
-                    fw = estimatedFw,
-                    enc = estimatedEnc,
-                    rep = estimatedRep,
+                    name = "Target-$ip",
+                    level = 1,
+                    fw = 1,
+                    enc = 1,
+                    rep = 0,
+                    score = 0L,
+                    crew = "",
                     stolenCrypto = totalStolen,
                     hitCount = hitCount,
                     avgPerHit = avgPerHit,
-                    crPerHour = estCrPerHour,
+                    crPerHour = totalStolen,
                     peakHour = peakHourStr,
                     wallet = primaryWallet,
                     scope = scope,
-                    contributor = contributor,
-                    lastUpdated = System.currentTimeMillis()
+                    contributor = contributor
                 )
             )
 
@@ -187,7 +167,7 @@ object LogParser {
             }
         }
 
-        val summary = "Parsed ${parsedRaids.size} raids across ${targetEntities.size} unique IPs. Ignored $ignoredMasked masked entries."
+        val summary = "[PARSER] Logs processed bottom-to-top. ${targetEntities.size} valid targets extracted."
         return ParseResult(targetEntities, raidEntities, ignoredMasked, summary)
     }
 
@@ -203,13 +183,12 @@ object LogParser {
 """.trimIndent()
 
     val SAMPLE_OUTPUT_LOGS = """
+[9-23 8:08] Accessed device at 111.98.13.146
 [9-23 8:08] Stole 485 Crypto from hx51f3...933d
 [9-23 8:08] Accessed device at xxx.xxx.xxx.xxx
 [9-23 8:08] Stole 259 Crypto from hxfa9c...ce4b
 [9-23 8:08] Accessed device at 129.101.254.235
 [9-23 8:07] Stole 412 Crypto from hxa93a...9cc6
 [9-23 8:07] Accessed device at 10.76.96.9
-[9-23 07:44] Stole 1,820 Crypto from hx38ff...55a1
-[9-23 07:43] Accessed device at 203.0.113.45
 """.trimIndent()
 }

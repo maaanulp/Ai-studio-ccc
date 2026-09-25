@@ -101,6 +101,8 @@ fun IntelligenceDatabaseScreen(
     val generalQuery by viewModel.generalSearchQuery.collectAsState()
 
     val sortField by viewModel.currentSort.collectAsState()
+    val intelFilter by viewModel.intelFilterType.collectAsState()
+    val selectedTargetIds by viewModel.selectedTargetIds.collectAsState()
     val isGenAuthenticated by viewModel.isGeneralDbAuthenticated.collectAsState()
     val genAuthError by viewModel.generalDbAuthError.collectAsState()
     val terminalAuthFeedback by viewModel.terminalAuthFeedback.collectAsState()
@@ -174,11 +176,11 @@ fun IntelligenceDatabaseScreen(
         when (databaseTab) {
             DatabaseTab.INTERNAL -> {
                 // Reminder banner
-                PrivacyReminderBanner(text = "internal database remains private")
+                PrivacyReminderBanner(text = "NOTICE // internal database remaining local")
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Search Bar
+                // Direct Search Bar
                 HackerSearchField(
                     query = internalQuery,
                     onQueryChange = { viewModel.setInternalSearchQuery(it) },
@@ -187,6 +189,18 @@ fun IntelligenceDatabaseScreen(
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                if (selectedTargetIds.isNotEmpty()) {
+                    BatchExportBar(
+                        selectedCount = selectedTargetIds.size,
+                        onExportGeneral = {
+                            viewModel.exportSelectedTargetsToGeneral { count ->
+                                Toast.makeText(context, "Exported $count targets to General Database", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onClear = { viewModel.clearTargetSelections() }
+                    )
+                }
 
                 // Action row: export all to general database
                 Row(
@@ -218,6 +232,8 @@ fun IntelligenceDatabaseScreen(
                 IntelGridTable(
                     targets = internalTargets,
                     sortField = sortField,
+                    selectedTargetIds = selectedTargetIds,
+                    onToggleSelectTarget = { viewModel.toggleTargetSelection(it) },
                     onToggleFw = { viewModel.toggleSortFw() },
                     onToggleAvg = { viewModel.toggleSortAvg() },
                     onSelectTarget = { viewModel.selectTargetForDossier(it) }
@@ -241,11 +257,11 @@ fun IntelligenceDatabaseScreen(
 
             DatabaseTab.EXTERNAL -> {
                 // Reminder banner
-                PrivacyReminderBanner(text = "external database remains private")
+                PrivacyReminderBanner(text = "NOTICE // external database remaining local")
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Search Bar: "search IP or wallet"
+                // Direct Search Bar: "search IP or wallet"
                 HackerSearchField(
                     query = externalQuery,
                     onQueryChange = { viewModel.setExternalSearchQuery(it) },
@@ -254,6 +270,18 @@ fun IntelligenceDatabaseScreen(
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                if (selectedTargetIds.isNotEmpty()) {
+                    BatchExportBar(
+                        selectedCount = selectedTargetIds.size,
+                        onExportGeneral = {
+                            viewModel.exportSelectedTargetsToGeneral { count ->
+                                Toast.makeText(context, "Exported $count targets to General Database", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onClear = { viewModel.clearTargetSelections() }
+                    )
+                }
 
                 // Dual export buttons
                 Row(
@@ -286,6 +314,8 @@ fun IntelligenceDatabaseScreen(
                 IntelGridTable(
                     targets = externalTargets,
                     sortField = sortField,
+                    selectedTargetIds = selectedTargetIds,
+                    onToggleSelectTarget = { viewModel.toggleTargetSelection(it) },
                     onToggleFw = { viewModel.toggleSortFw() },
                     onToggleAvg = { viewModel.toggleSortAvg() },
                     onSelectTarget = { viewModel.selectTargetForDossier(it) }
@@ -308,6 +338,11 @@ fun IntelligenceDatabaseScreen(
             }
 
             DatabaseTab.GENERAL -> {
+                // Reminder banner
+                PrivacyReminderBanner(text = if (isGenAuthenticated) "NOTICE // general database online" else "NOTICE // general database offline")
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 // Online General Database Section (Supabase Integration)
                 TerminalContainer(
                     title = "CREW SHARED NETWORK // GENERAL DB",
@@ -346,10 +381,10 @@ fun IntelligenceDatabaseScreen(
                                         color = if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber
                                     )
                                     Text(
-                                        text = if (isGenAuthenticated) "[SUPABASE SYNCED]" else "[UNAUTHENTICATED]",
+                                        text = if (isGenAuthenticated) "[SUPABASE SYNCED]" else "",
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 10.sp,
-                                        color = if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber
+                                        color = MatrixGreenPrimary
                                     )
                                 }
                                 Text(
@@ -513,134 +548,198 @@ fun IntelligenceDatabaseScreen(
 
                             // Crew Login or Create Block
                             if (activeCrewAction == "AUTH") {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(MatrixDarkSurfaceVariant)
-                                        .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
-                                        .padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "CREW SERVER LOGIN",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MatrixGreenPrimary
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                if (currentProfile.isBlank() || currentProfile.equals("Unassigned", ignoreCase = true)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(MatrixDarkSurfaceVariant)
+                                            .border(BorderStroke(1.dp, CyberAmber), RoundedCornerShape(4.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        OutlinedTextField(
-                                            value = crewId,
-                                            onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
-                                            label = { Text("CREW ID", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
-                                            placeholder = { Text("ALPHA", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
-                                            singleLine = true,
-                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = MatrixDarkBackground,
-                                                unfocusedContainerColor = MatrixDarkBackground,
-                                                focusedBorderColor = MatrixGreenPrimary,
-                                                unfocusedBorderColor = MatrixBorder
-                                            ),
-                                            modifier = Modifier.weight(1f)
+                                        Text(
+                                            text = "[!] OPERATIVE SESSION REQUIRED",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CyberAmber
                                         )
-                                        OutlinedTextField(
-                                            value = crewPassword,
-                                            onValueChange = { viewModel.setCrewCredentials(crewId, it) },
-                                            label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
-                                            placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
-                                            singleLine = true,
-                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = MatrixDarkBackground,
-                                                unfocusedContainerColor = MatrixDarkBackground,
-                                                focusedBorderColor = MatrixGreenPrimary,
-                                                unfocusedBorderColor = MatrixBorder
-                                            ),
-                                            modifier = Modifier.weight(1.2f)
+                                        Text(
+                                            text = "You must authenticate your local operative identity first before connecting to shared crew servers.",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 10.sp,
+                                            color = MatrixTextMuted
+                                        )
+                                        HackerButton(
+                                            text = "[LOG IN OPERATIVE]",
+                                            onClick = { viewModel.openAuthModal() },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            testTag = "crew_login_operative_btn"
                                         )
                                     }
-                                    HackerButton(
-                                        text = if (isSupabaseLoading) "[CONNECTING...]" else "[CONNECT CREW SERVER]",
-                                        onClick = {
-                                            viewModel.authenticateGeneralDatabase { success, message ->
-                                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        testTag = "crew_confirm_auth_btn"
-                                    )
-                                }
-                            } else {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(MatrixDarkSurfaceVariant)
-                                        .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(4.dp))
-                                        .padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "REGISTER NEW SERVER CREW",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MatrixGreenPrimary
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(MatrixDarkSurfaceVariant)
+                                            .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        OutlinedTextField(
-                                            value = crewId,
-                                            onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
-                                            label = { Text("NEW CREW ID", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
-                                            placeholder = { Text("SHADOW", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
-                                            singleLine = true,
-                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = MatrixDarkBackground,
-                                                unfocusedContainerColor = MatrixDarkBackground,
-                                                focusedBorderColor = MatrixGreenPrimary,
-                                                unfocusedBorderColor = MatrixBorder
-                                            ),
-                                            modifier = Modifier.weight(1f)
+                                        Text(
+                                            text = "CREW SERVER LOGIN // OPERATIVE: [$currentProfile]",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MatrixGreenPrimary
                                         )
-                                        OutlinedTextField(
-                                            value = crewPassword,
-                                            onValueChange = { viewModel.setCrewCredentials(crewId, it) },
-                                            label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
-                                            placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
-                                            singleLine = true,
-                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = MatrixDarkBackground,
-                                                unfocusedContainerColor = MatrixDarkBackground,
-                                                focusedBorderColor = MatrixGreenPrimary,
-                                                unfocusedBorderColor = MatrixBorder
-                                            ),
-                                            modifier = Modifier.weight(1.2f)
-                                        )
-                                    }
-                                    HackerButton(
-                                        text = if (isSupabaseLoading) "[CREATING...]" else "[REGISTER & BECOME ADMIN]",
-                                        onClick = {
-                                            if (crewId.trim().isNotBlank() && crewPassword.trim().isNotBlank()) {
-                                                viewModel.createServerCrew(crewId.trim(), crewPassword.trim()) { success, message ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = crewId,
+                                                onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
+                                                label = { Text("CREW ID", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                                placeholder = { Text("ALPHA", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                                singleLine = true,
+                                                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = MatrixDarkBackground,
+                                                    unfocusedContainerColor = MatrixDarkBackground,
+                                                    focusedBorderColor = MatrixGreenPrimary,
+                                                    unfocusedBorderColor = MatrixBorder
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            OutlinedTextField(
+                                                value = crewPassword,
+                                                onValueChange = { viewModel.setCrewCredentials(crewId, it) },
+                                                label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                                placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                                singleLine = true,
+                                                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = MatrixDarkBackground,
+                                                    unfocusedContainerColor = MatrixDarkBackground,
+                                                    focusedBorderColor = MatrixGreenPrimary,
+                                                    unfocusedBorderColor = MatrixBorder
+                                                ),
+                                                modifier = Modifier.weight(1.2f)
+                                            )
+                                        }
+                                        HackerButton(
+                                            text = if (isSupabaseLoading) "[CONNECTING...]" else "[CONNECT CREW SERVER]",
+                                            onClick = {
+                                                viewModel.authenticateGeneralDatabase { success, message ->
                                                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                                                 }
-                                            } else {
-                                                Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        testTag = "crew_confirm_create_btn"
-                                    )
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            testTag = "crew_confirm_auth_btn"
+                                        )
+                                    }
+                                }
+                            } else {
+                                if (currentProfile.isBlank() || currentProfile.equals("Unassigned", ignoreCase = true)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(MatrixDarkSurfaceVariant)
+                                            .border(BorderStroke(1.dp, CyberAmber), RoundedCornerShape(4.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "[!] OPERATIVE SESSION REQUIRED",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CyberAmber
+                                        )
+                                        Text(
+                                            text = "You must authenticate your local operative identity first before creating shared crew servers.",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 10.sp,
+                                            color = MatrixTextMuted
+                                        )
+                                        HackerButton(
+                                            text = "[LOG IN OPERATIVE]",
+                                            onClick = { viewModel.openAuthModal() },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            testTag = "crew_create_operative_btn"
+                                        )
+                                    }
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(MatrixDarkSurfaceVariant)
+                                            .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(4.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "REGISTER NEW SERVER CREW // CREATOR: [$currentProfile]",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MatrixGreenPrimary
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = crewId,
+                                                onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
+                                                label = { Text("NEW CREW ID", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                                placeholder = { Text("SHADOW", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                                singleLine = true,
+                                                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = MatrixDarkBackground,
+                                                    unfocusedContainerColor = MatrixDarkBackground,
+                                                    focusedBorderColor = MatrixGreenPrimary,
+                                                    unfocusedBorderColor = MatrixBorder
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            OutlinedTextField(
+                                                value = crewPassword,
+                                                onValueChange = { viewModel.setCrewCredentials(crewId, it) },
+                                                label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                                placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                                singleLine = true,
+                                                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = MatrixDarkBackground,
+                                                    unfocusedContainerColor = MatrixDarkBackground,
+                                                    focusedBorderColor = MatrixGreenPrimary,
+                                                    unfocusedBorderColor = MatrixBorder
+                                                ),
+                                                modifier = Modifier.weight(1.2f)
+                                            )
+                                        }
+                                        HackerButton(
+                                            text = if (isSupabaseLoading) "[CREATING...]" else "[REGISTER & BECOME CREW ADMIN]",
+                                            onClick = {
+                                                if (crewId.trim().isNotBlank() && crewPassword.trim().isNotBlank()) {
+                                                    viewModel.createServerCrew(crewId.trim(), crewPassword.trim()) { success, message ->
+                                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                                    }
+                                                } else {
+                                                    Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            testTag = "crew_confirm_create_btn"
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -670,19 +769,30 @@ fun IntelligenceDatabaseScreen(
                                         color = MatrixGreenDim
                                     )
                                 }
-                                HackerButton(
-                                    text = "[DISCONNECT]",
-                                    onClick = {
-                                        viewModel.disconnectGeneralDatabase()
-                                        Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
-                                    },
-                                    testTag = "crew_disconnect_btn"
-                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    HackerButton(
+                                        text = "[SYNC ONLINE]",
+                                        onClick = {
+                                            viewModel.syncOnlineWithSupabase { count, dupes, author ->
+                                                Toast.makeText(context, "SYNC: $count new targets uploaded as '$author' ($dupes duplicates preserved)", Toast.LENGTH_LONG).show()
+                                            }
+                                        },
+                                        testTag = "sync_online_btn"
+                                    )
+                                    HackerButton(
+                                        text = "[DISCONNECT]",
+                                        onClick = {
+                                            viewModel.disconnectGeneralDatabase()
+                                            Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
+                                        },
+                                        testTag = "crew_disconnect_btn"
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            // Search Bar + Grid Table + Admin Purge
+                            // Direct Search Bar + Grid Table + Admin Purge
                             HackerSearchField(
                                 query = generalQuery,
                                 onQueryChange = { viewModel.setGeneralSearchQuery(it) },
@@ -692,9 +802,23 @@ fun IntelligenceDatabaseScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
+                            if (selectedTargetIds.isNotEmpty()) {
+                                BatchExportBar(
+                                    selectedCount = selectedTargetIds.size,
+                                    onExportGeneral = {
+                                        viewModel.exportSelectedTargetsToGeneral { count ->
+                                            Toast.makeText(context, "Exported $count targets to General Database", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onClear = { viewModel.clearTargetSelections() }
+                                )
+                            }
+
                             IntelGridTable(
                                 targets = generalTargets,
                                 sortField = sortField,
+                                selectedTargetIds = selectedTargetIds,
+                                onToggleSelectTarget = { viewModel.toggleTargetSelection(it) },
                                 onToggleFw = { viewModel.toggleSortFw() },
                                 onToggleAvg = { viewModel.toggleSortAvg() },
                                 onSelectTarget = { viewModel.selectTargetForDossier(it) }
@@ -820,7 +944,7 @@ private fun PrivacyReminderBanner(text: String) {
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
-            text = "NOTICE // $text",
+            text = if (text.startsWith("NOTICE")) text else "NOTICE // $text",
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
@@ -860,6 +984,8 @@ private fun DbTabButton(
 fun IntelGridTable(
     targets: List<TargetEntity>,
     sortField: SortField,
+    selectedTargetIds: Set<Long>,
+    onToggleSelectTarget: (Long) -> Unit,
     onToggleFw: () -> Unit,
     onToggleAvg: () -> Unit,
     onSelectTarget: (TargetEntity) -> Unit
@@ -948,6 +1074,8 @@ fun IntelGridTable(
                 targets.forEach { target ->
                     ExpandableTargetRow(
                         target = target,
+                        isSelected = selectedTargetIds.contains(target.id),
+                        onToggleSelect = { onToggleSelectTarget(target.id) },
                         onSelectTarget = { onSelectTarget(target) }
                     )
                 }
@@ -959,6 +1087,8 @@ fun IntelGridTable(
 @Composable
 private fun ExpandableTargetRow(
     target: TargetEntity,
+    isSelected: Boolean,
+    onToggleSelect: () -> Unit,
     onSelectTarget: () -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(false) }
@@ -968,11 +1098,11 @@ private fun ExpandableTargetRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
-            .background(MatrixDarkSurface)
+            .background(if (isSelected) MatrixDarkSurfaceVariant else MatrixDarkSurface)
             .border(
                 BorderStroke(
                     1.dp,
-                    if (isExpanded) MatrixGreenDim else MatrixBorder
+                    if (isSelected) MatrixGreenPrimary else if (isExpanded) MatrixGreenDim else MatrixBorder
                 ),
                 RoundedCornerShape(6.dp)
             )
@@ -992,6 +1122,26 @@ private fun ExpandableTargetRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (isSelected) MatrixGreenPrimary else MatrixDarkBackground)
+                            .border(BorderStroke(1.dp, MatrixGreenPrimary), RoundedCornerShape(3.dp))
+                            .clickable { onToggleSelect() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Text(
+                                text = "✓",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MatrixDarkBackground
+                            )
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .size(7.dp)
@@ -1277,6 +1427,87 @@ private fun TargetStatChip(
 }
 
 @Composable
+private fun IntelFilterChips(
+    selectedFilter: com.example.ui.viewmodel.IntelFilterType,
+    onSelectFilter: (com.example.ui.viewmodel.IntelFilterType) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        IntelFilterChip(title = "[ALL]", selected = selectedFilter == com.example.ui.viewmodel.IntelFilterType.ALL, onClick = { onSelectFilter(com.example.ui.viewmodel.IntelFilterType.ALL) }, modifier = Modifier.weight(1f))
+        IntelFilterChip(title = "[IPs]", selected = selectedFilter == com.example.ui.viewmodel.IntelFilterType.IPS, onClick = { onSelectFilter(com.example.ui.viewmodel.IntelFilterType.IPS) }, modifier = Modifier.weight(1f))
+        IntelFilterChip(title = "[WALLETS]", selected = selectedFilter == com.example.ui.viewmodel.IntelFilterType.WALLETS, onClick = { onSelectFilter(com.example.ui.viewmodel.IntelFilterType.WALLETS) }, modifier = Modifier.weight(1f))
+        IntelFilterChip(title = "[ACCOUNTS]", selected = selectedFilter == com.example.ui.viewmodel.IntelFilterType.ACCOUNTS, onClick = { onSelectFilter(com.example.ui.viewmodel.IntelFilterType.ACCOUNTS) }, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun IntelFilterChip(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (selected) MatrixGreenPrimary else MatrixDarkSurface)
+            .border(BorderStroke(1.dp, if (selected) MatrixGreenPrimary else MatrixBorder), RoundedCornerShape(3.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MatrixDarkBackground else MatrixTextSecondary
+        )
+    }
+}
+
+@Composable
+private fun BatchExportBar(
+    selectedCount: Int,
+    onExportGeneral: () -> Unit,
+    onClear: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(MatrixDarkSurfaceVariant)
+            .border(BorderStroke(1.dp, MatrixGreenPrimary), RoundedCornerShape(4.dp))
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$selectedCount selected for batch export",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MatrixGreenPrimary
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            HackerButton(
+                text = "[EXPORT TO GENERAL]",
+                onClick = onExportGeneral,
+                testTag = "batch_export_general_btn"
+            )
+            HackerButton(
+                text = "[CLEAR]",
+                onClick = onClear,
+                testTag = "clear_selection_btn"
+            )
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+@Composable
 private fun TableHeaderCellWithSort(
     title: String,
     width: Int,
@@ -1284,34 +1515,26 @@ private fun TableHeaderCellWithSort(
     isSortedAsc: Boolean,
     onToggle: () -> Unit
 ) {
-    Row(
+    val sortArrow = when {
+        isSortedDesc -> " ▼"
+        isSortedAsc -> " ▲"
+        else -> ""
+    }
+    Box(
         modifier = Modifier
-            .width(width.dp)
             .clip(RoundedCornerShape(3.dp))
             .background(MatrixDarkSurface)
-            .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(3.dp))
+            .border(BorderStroke(1.dp, if (isSortedDesc || isSortedAsc) MatrixGreenPrimary else MatrixBorder), RoundedCornerShape(3.dp))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
-            text = title,
+            text = "$title$sortArrow",
             fontFamily = FontFamily.Monospace,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = MatrixGreenPrimary
-        )
-        Spacer(modifier = Modifier.width(2.dp))
-        Text(
-            text = when {
-                isSortedDesc -> "▼"
-                isSortedAsc -> "▲"
-                else -> "▽"
-            },
-            fontFamily = FontFamily.Monospace,
-            fontSize = 9.sp,
-            color = if (isSortedDesc || isSortedAsc) MatrixGreenGlow else MatrixGreenDim
+            color = if (isSortedDesc || isSortedAsc) MatrixGreenPrimary else MatrixTextSecondary
         )
     }
 }

@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.MatrixRainCanvas
 import com.example.ui.components.TargetDossierDialog
+import com.example.ui.components.HackerAuthModal
+import com.example.ui.components.HackerButton
 import com.example.ui.theme.MatrixBorder
 import com.example.ui.theme.MatrixBorderBright
 import com.example.ui.theme.MatrixDarkBackground
@@ -72,6 +74,8 @@ fun MainScreen(viewModel: IntelViewModel) {
     val currentSection by viewModel.currentSection.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
     val isCurrentUserAdmin by viewModel.isCurrentUserAdmin.collectAsState()
+    val isGenAuthenticated by viewModel.isGeneralDbAuthenticated.collectAsState()
+    val showAuthModal by viewModel.showAuthModal.collectAsState()
     val crewAccounts by viewModel.crewAccounts.collectAsState()
     val selectedTarget by viewModel.selectedTargetForDossier.collectAsState()
 
@@ -97,13 +101,26 @@ fun MainScreen(viewModel: IntelViewModel) {
                         .border(BorderStroke(1.dp, MatrixBorder))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text(
-                        text = "Crypt0 Cr3w Central [CCC]",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MatrixGreenPrimary
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Crypt0 Cr3w Central [CCC]",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MatrixGreenPrimary
+                        )
+                        if (currentProfile.isBlank() || currentProfile.equals("Unassigned", ignoreCase = true)) {
+                            HackerButton(
+                                text = "[LOG IN]",
+                                onClick = { viewModel.openAuthModal() },
+                                testTag = "topbar_login_btn"
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -115,7 +132,13 @@ fun MainScreen(viewModel: IntelViewModel) {
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(MatrixDarkSurfaceVariant)
                                 .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
-                                .clickable { showProfileDropdown = true }
+                                .clickable {
+                                    if (currentProfile.isBlank() || !isGenAuthenticated) {
+                                        viewModel.openAuthModal()
+                                    } else {
+                                        showProfileDropdown = true
+                                    }
+                                }
                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -202,10 +225,10 @@ fun MainScreen(viewModel: IntelViewModel) {
                     modifier = Modifier.border(BorderStroke(1.dp, MatrixBorder))
                 ) {
                     val navItems = listOf(
-                        NavEntry(AppSection.PROCESS_LOGS, "Process", Icons.Default.Terminal, "nav_process_logs"),
-                        NavEntry(AppSection.INTEL_DATABASE, "Intel DB", Icons.Default.Storage, "nav_intel_db"),
                         NavEntry(AppSection.SCREENSHOT_SCANNER, "Scanner", Icons.Default.CropFree, "nav_scanner"),
-                        NavEntry(AppSection.OPERATIONAL_METRICS, "Metrics", Icons.Default.Analytics, "nav_metrics")
+                        NavEntry(AppSection.INTEL_DATABASE, "Intel DB", Icons.Default.Storage, "nav_intel_db"),
+                        NavEntry(AppSection.OPERATIONAL_METRICS, "Metrics", Icons.Default.Analytics, "nav_metrics"),
+                        NavEntry(AppSection.HISTORY_LOGS, "Logs / Activity", Icons.Default.Terminal, "nav_logs_activity")
                     )
 
                     navItems.forEach { item ->
@@ -248,7 +271,7 @@ fun MainScreen(viewModel: IntelViewModel) {
             ) {
                 Crossfade(targetState = currentSection, label = "SectionCrossfade") { section ->
                     when (section) {
-                        AppSection.PROCESS_LOGS -> ProcessLogsScreen(viewModel = viewModel)
+                        AppSection.HISTORY_LOGS -> HistoryLogsScreen(viewModel = viewModel)
                         AppSection.SCREENSHOT_SCANNER -> ScreenshotScannerScreen(viewModel = viewModel)
                         AppSection.OPERATIONAL_METRICS -> OperationalMetricsScreen(viewModel = viewModel)
                         AppSection.INTEL_DATABASE -> IntelligenceDatabaseScreen(viewModel = viewModel)
@@ -263,6 +286,14 @@ fun MainScreen(viewModel: IntelViewModel) {
             onDismiss = { viewModel.selectTargetForDossier(null) },
             onGenerateReport = { target -> viewModel.generateAndSaveIntelligenceReport(target) }
         )
+
+        // Hacker Crew Authentication Modal
+        if (showAuthModal) {
+            HackerAuthModal(
+                viewModel = viewModel,
+                onDismiss = { viewModel.closeAuthModal() }
+            )
+        }
     }
 }
 

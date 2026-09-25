@@ -33,10 +33,22 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AppSection(val title: String) {
-    PROCESS_LOGS("1. Process Logs"),
-    SCREENSHOT_SCANNER("2. Screenshot Scanner"),
-    OPERATIONAL_METRICS("3. Operational Metrics"),
-    INTEL_DATABASE("4. Intel Database")
+    HISTORY_LOGS("Logs / Activity"),
+    SCREENSHOT_SCANNER("Scanner"),
+    OPERATIONAL_METRICS("Metrics"),
+    INTEL_DATABASE("Intel DB")
+}
+
+enum class ScannerTab {
+    OCR_SCREENSHOT,
+    MANUAL_LOGS
+}
+
+enum class IntelFilterType {
+    ALL,
+    IPS,
+    WALLETS,
+    ACCOUNTS
 }
 
 enum class ProcessLogsTab {
@@ -100,13 +112,32 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         _isCurrentUserAdmin.value = prefs.getBoolean("saved_is_admin", false)
     }
 
-    private val _currentSection = MutableStateFlow(AppSection.PROCESS_LOGS)
+    private val _currentSection = MutableStateFlow(AppSection.SCREENSHOT_SCANNER)
     val currentSection: StateFlow<AppSection> = _currentSection.asStateFlow()
+
+    // Auth Dialog / Modal state
+    private val _showAuthModal = MutableStateFlow(false)
+    val showAuthModal: StateFlow<Boolean> = _showAuthModal.asStateFlow()
+
+    fun openAuthModal() {
+        _showAuthModal.value = true
+    }
+
+    fun closeAuthModal() {
+        _showAuthModal.value = false
+    }
 
     private val _currentProfile = MutableStateFlow("")
     val currentProfile: StateFlow<String> = _currentProfile.asStateFlow()
 
-    // Section 1: Process Logs
+    // Section 2: Screenshot Scanner & Manual Logs
+    private val _scannerTab = MutableStateFlow(ScannerTab.MANUAL_LOGS)
+    val scannerTab: StateFlow<ScannerTab> = _scannerTab.asStateFlow()
+
+    fun setScannerTab(tab: ScannerTab) {
+        _scannerTab.value = tab
+    }
+
     private val _processTab = MutableStateFlow(ProcessLogsTab.INPUT_LOGS)
     val processTab: StateFlow<ProcessLogsTab> = _processTab.asStateFlow()
 
@@ -118,6 +149,21 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     private val _processStatusMessage = MutableStateFlow<String?>(null)
     val processStatusMessage: StateFlow<String?> = _processStatusMessage.asStateFlow()
+
+    // Direct Export Options (Independent toggles: [Export to internal db] and [Export to general db])
+    private val _exportToInternalOption = MutableStateFlow(true)
+    val exportToInternalOption: StateFlow<Boolean> = _exportToInternalOption.asStateFlow()
+
+    private val _exportToGeneralOption = MutableStateFlow(false)
+    val exportToGeneralOption: StateFlow<Boolean> = _exportToGeneralOption.asStateFlow()
+
+    fun toggleExportToInternalOption() {
+        _exportToInternalOption.value = !_exportToInternalOption.value
+    }
+
+    fun toggleExportToGeneralOption() {
+        _exportToGeneralOption.value = !_exportToGeneralOption.value
+    }
 
     // Section 2: Screenshot Scanner
     private val _scannerState = MutableStateFlow(ScannerUiState())
@@ -138,6 +184,54 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     private val _currentSort = MutableStateFlow(SortField.NONE)
     val currentSort: StateFlow<SortField> = _currentSort.asStateFlow()
+
+    private val _intelFilterType = MutableStateFlow(IntelFilterType.ALL)
+    val intelFilterType: StateFlow<IntelFilterType> = _intelFilterType.asStateFlow()
+
+    fun setIntelFilterType(filter: IntelFilterType) {
+        _intelFilterType.value = filter
+    }
+
+    private val _selectedTargetIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedTargetIds: StateFlow<Set<Long>> = _selectedTargetIds.asStateFlow()
+
+    fun toggleTargetSelection(id: Long) {
+        val current = _selectedTargetIds.value
+        _selectedTargetIds.value = if (current.contains(id)) current - id else current + id
+    }
+
+    fun clearTargetSelections() {
+        _selectedTargetIds.value = emptySet()
+    }
+
+    fun exportSelectedTargetsToGeneral(onComplete: (Int) -> Unit) {
+        viewModelScope.launch {
+            val selectedIds = _selectedTargetIds.value
+            if (selectedIds.isEmpty()) {
+                onComplete(0)
+                return@launch
+            }
+            val currentList = when (_databaseTab.value) {
+                DatabaseTab.INTERNAL -> internalTargets.value
+                DatabaseTab.EXTERNAL -> externalTargets.value
+                DatabaseTab.GENERAL -> emptyList()
+            }
+            val targetsToExport = currentList.filter { selectedIds.contains(it.id) }
+            var count = 0
+            for (target in targetsToExport) {
+                val copy = target.copy(id = 0, scope = DatabaseScope.GENERAL)
+                val existing = repository.getTargetByIp(copy.ip, DatabaseScope.GENERAL)
+                if (existing == null) {
+                    repository.insertOrUpdateTarget(copy)
+                } else {
+                    repository.insertOrUpdateTarget(copy.copy(id = existing.id))
+                }
+                count++
+            }
+            _selectedTargetIds.value = emptySet()
+            onComplete(count)
+        }
+    }
 
     // General Database Crew Auth (Supabase Integration)
     private val _crewIdInput = MutableStateFlow("")
@@ -179,40 +273,61 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     val internalTargets: StateFlow<List<TargetEntity>> = combine(
         repository.getTargets(DatabaseScope.INTERNAL),
         _internalSearchQuery,
-        _currentSort
-    ) { list, query, sort ->
-        val filtered = if (query.isBlank()) list else list.filter {
+        _currentSort,
+        _intelFilterType
+    ) { list, query, sort, filter ->
+        val filteredByQuery = if (query.isBlank()) list else list.filter {
             it.ip.contains(query, true) ||
             it.name.contains(query, true) ||
             it.wallet.contains(query, true) ||
             it.crew.contains(query, true)
         }
-        applySort(filtered, sort)
+        val filteredByType = when (filter) {
+            IntelFilterType.ALL -> filteredByQuery
+            IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
+            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() }
+            IntelFilterType.ACCOUNTS -> filteredByQuery.filter { it.name.isNotBlank() && it.name != "Unknown" }
+        }
+        applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val externalTargets: StateFlow<List<TargetEntity>> = combine(
         repository.getTargets(DatabaseScope.EXTERNAL),
         _externalSearchQuery,
-        _currentSort
-    ) { list, query, sort ->
-        val filtered = if (query.isBlank()) list else list.filter {
+        _currentSort,
+        _intelFilterType
+    ) { list, query, sort, filter ->
+        val filteredByQuery = if (query.isBlank()) list else list.filter {
             it.ip.contains(query, true) || it.wallet.contains(query, true)
         }
-        applySort(filtered, sort)
+        val filteredByType = when (filter) {
+            IntelFilterType.ALL -> filteredByQuery
+            IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
+            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() }
+            IntelFilterType.ACCOUNTS -> filteredByQuery.filter { it.name.isNotBlank() && it.name != "Unknown" }
+        }
+        applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val generalTargets: StateFlow<List<TargetEntity>> = combine(
         repository.getTargets(DatabaseScope.GENERAL),
         _generalSearchQuery,
-        _currentSort
-    ) { list, query, sort ->
-        val filtered = if (query.isBlank()) list else list.filter {
+        _currentSort,
+        _intelFilterType
+    ) { list, query, sort, filter ->
+        val filteredByQuery = if (query.isBlank()) list else list.filter {
             it.ip.contains(query, true) ||
             it.name.contains(query, true) ||
             it.wallet.contains(query, true) ||
             it.crew.contains(query, true)
         }
-        applySort(filtered, sort)
+        val filteredByType = when (filter) {
+            IntelFilterType.ALL -> filteredByQuery
+            IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
+            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() }
+            IntelFilterType.ACCOUNTS -> filteredByQuery.filter { it.name.isNotBlank() && it.name != "Unknown" }
+        }
+        applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val crewAccounts: StateFlow<List<CrewAccountEntity>> = repository.getCrewAccounts()
@@ -247,6 +362,9 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     fun setSection(section: AppSection) {
         _currentSection.value = section
+        if (section == AppSection.SCREENSHOT_SCANNER) {
+            _scannerTab.value = ScannerTab.MANUAL_LOGS
+        }
     }
 
     fun setProcessTab(tab: ProcessLogsTab) {
@@ -304,36 +422,79 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
-    // Section 1 Actions
-    fun exportLogsToInternalDatabase() {
+    // Section 1 Actions (Manual Input/Output Logs Processing with Dual Destination Support)
+    fun exportLogsToInternalDatabase(onComplete: ((Int) -> Unit)? = null) {
         viewModelScope.launch {
             val text = _inputLogsText.value
             if (text.isBlank()) {
                 _processStatusMessage.value = "ERROR: Input log stream is empty."
+                onComplete?.invoke(0)
                 return@launch
             }
-            val result = LogParser.parseLogs(text, DatabaseScope.INTERNAL, _currentProfile.value)
-            for (target in result.targets) {
-                repository.insertOrUpdateTarget(target)
+            val toInternal = _exportToInternalOption.value
+            val toGeneral = _exportToGeneralOption.value
+            if (!toInternal && !toGeneral) {
+                _processStatusMessage.value = "ERROR: Select at least one destination ([Export to internal db] or [Export to general db])."
+                onComplete?.invoke(0)
+                return@launch
             }
-            repository.insertRaidLogs(result.raidLogs)
 
-            // Persist structured log entries to Room
-            val logEntries = result.raidLogs.map { log ->
-                LogEntryEntity(
-                    logType = "INPUT",
-                    rawText = "Target ${log.ip} | Crypto: ${log.stolenAmount} ₡ | Wallet: ${log.wallet} | Timestamp: ${log.timestampStr}",
-                    parsedIp = log.ip,
-                    parsedWallet = log.wallet,
-                    parsedAmount = log.stolenAmount,
-                    eventTimestamp = log.timestampStr,
-                    scope = DatabaseScope.INTERNAL,
-                    contributor = _currentProfile.value
-                )
+            val author = _currentProfile.value.ifBlank { "Operative" }
+            val summaryList = mutableListOf<String>()
+            var totalExported = 0
+
+            if (toInternal) {
+                val result = LogParser.parseLogs(text, DatabaseScope.INTERNAL, author)
+                for (target in result.targets) {
+                    repository.insertOrUpdateTarget(target)
+                }
+                repository.insertRaidLogs(result.raidLogs)
+                val logEntries = result.raidLogs.map { log ->
+                    LogEntryEntity(
+                        logType = "INPUT",
+                        rawText = "Target ${log.ip} | Crypto: ${log.stolenAmount} ₡ | Wallet: ${log.wallet} | Timestamp: ${log.timestampStr}",
+                        parsedIp = log.ip,
+                        parsedWallet = log.wallet,
+                        parsedAmount = log.stolenAmount,
+                        eventTimestamp = log.timestampStr,
+                        scope = DatabaseScope.INTERNAL,
+                        contributor = author
+                    )
+                }
+                repository.insertLogEntries(logEntries)
+                summaryList.add("Internal DB (${result.targets.size} targets)")
+                totalExported += result.targets.size
+                appendScannerLog("[PARSER] Logs processed bottom-to-top. ${result.targets.size} valid targets extracted.")
             }
-            repository.insertLogEntries(logEntries)
 
-            _processStatusMessage.value = "SUCCESS // Internal DB & Room Log Entries: ${result.summary}"
+            if (toGeneral) {
+                val genResult = LogParser.parseLogs(text, DatabaseScope.GENERAL, author)
+                for (target in genResult.targets) {
+                    val genTarget = target.copy(scope = DatabaseScope.GENERAL, crew = _crewIdInput.value.ifBlank { "ALPHA" }, contributor = author)
+                    repository.insertOrUpdateTarget(genTarget)
+                    if (_isGeneralDbAuthenticated.value) {
+                        SupabaseClient.insertGeneralRecord(genTarget)
+                    }
+                }
+                val genLogEntries = genResult.raidLogs.map { log ->
+                    LogEntryEntity(
+                        logType = "INPUT",
+                        rawText = "Target ${log.ip} | Crypto: ${log.stolenAmount} ₡ | Wallet: ${log.wallet} | Timestamp: ${log.timestampStr}",
+                        parsedIp = log.ip,
+                        parsedWallet = log.wallet,
+                        parsedAmount = log.stolenAmount,
+                        eventTimestamp = log.timestampStr,
+                        scope = DatabaseScope.GENERAL,
+                        contributor = author
+                    )
+                }
+                repository.insertLogEntries(genLogEntries)
+                summaryList.add("General DB (${genResult.targets.size} targets)")
+                totalExported += genResult.targets.size
+            }
+
+            _processStatusMessage.value = "SUCCESS // Exported to ${summaryList.joinToString(" & ")} by author '$author'."
+            onComplete?.invoke(totalExported)
         }
     }
 
@@ -344,28 +505,64 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 _processStatusMessage.value = "ERROR: Victim log stream is empty."
                 return@launch
             }
-            val result = LogParser.parseLogs(text, DatabaseScope.EXTERNAL, _currentProfile.value)
-            for (target in result.targets) {
-                repository.insertOrUpdateTarget(target)
+            val toExternal = _exportToInternalOption.value
+            val toGeneral = _exportToGeneralOption.value
+            if (!toExternal && !toGeneral) {
+                _processStatusMessage.value = "ERROR: Select at least one destination ([Export to internal db] or [Export to general db])."
+                return@launch
             }
-            repository.insertRaidLogs(result.raidLogs)
 
-            // Persist structured victim log entries to Room
-            val logEntries = result.raidLogs.map { log ->
-                LogEntryEntity(
-                    logType = "OUTPUT",
-                    rawText = "Victim Raid ${log.ip} | Crypto: ${log.stolenAmount} ₡ | Wallet: ${log.wallet} | Timestamp: ${log.timestampStr}",
-                    parsedIp = log.ip,
-                    parsedWallet = log.wallet,
-                    parsedAmount = log.stolenAmount,
-                    eventTimestamp = log.timestampStr,
-                    scope = DatabaseScope.EXTERNAL,
-                    contributor = _currentProfile.value
-                )
+            val author = _currentProfile.value.ifBlank { "Operative" }
+            val summaryList = mutableListOf<String>()
+
+            if (toExternal) {
+                val result = LogParser.parseLogs(text, DatabaseScope.EXTERNAL, author)
+                for (target in result.targets) {
+                    repository.insertOrUpdateTarget(target)
+                }
+                repository.insertRaidLogs(result.raidLogs)
+                val logEntries = result.raidLogs.map { log ->
+                    LogEntryEntity(
+                        logType = "OUTPUT",
+                        rawText = "Victim Raid ${log.ip} | Crypto: ${log.stolenAmount} ₡ | Wallet: ${log.wallet} | Timestamp: ${log.timestampStr}",
+                        parsedIp = log.ip,
+                        parsedWallet = log.wallet,
+                        parsedAmount = log.stolenAmount,
+                        eventTimestamp = log.timestampStr,
+                        scope = DatabaseScope.EXTERNAL,
+                        contributor = author
+                    )
+                }
+                repository.insertLogEntries(logEntries)
+                summaryList.add("External DB (${result.targets.size} targets)")
             }
-            repository.insertLogEntries(logEntries)
 
-            _processStatusMessage.value = "SUCCESS // External DB & Room Log Entries: ${result.summary}"
+            if (toGeneral) {
+                val genResult = LogParser.parseLogs(text, DatabaseScope.GENERAL, author)
+                for (target in genResult.targets) {
+                    val genTarget = target.copy(scope = DatabaseScope.GENERAL, crew = _crewIdInput.value.ifBlank { "ALPHA" }, contributor = author)
+                    repository.insertOrUpdateTarget(genTarget)
+                    if (_isGeneralDbAuthenticated.value) {
+                        SupabaseClient.insertGeneralRecord(genTarget)
+                    }
+                }
+                val genLogEntries = genResult.raidLogs.map { log ->
+                    LogEntryEntity(
+                        logType = "OUTPUT",
+                        rawText = "Victim Raid ${log.ip} | Crypto: ${log.stolenAmount} ₡ | Wallet: ${log.wallet} | Timestamp: ${log.timestampStr}",
+                        parsedIp = log.ip,
+                        parsedWallet = log.wallet,
+                        parsedAmount = log.stolenAmount,
+                        eventTimestamp = log.timestampStr,
+                        scope = DatabaseScope.GENERAL,
+                        contributor = author
+                    )
+                }
+                repository.insertLogEntries(genLogEntries)
+                summaryList.add("General DB (${genResult.targets.size} targets)")
+            }
+
+            _processStatusMessage.value = "SUCCESS // Exported to ${summaryList.joinToString(" & ")} by author '$author'."
         }
     }
 
@@ -919,6 +1116,57 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
+    fun syncOnlineWithSupabase(onResult: ((Int, Int, String) -> Unit)? = null) {
+        viewModelScope.launch {
+            val crewId = _crewIdInput.value.trim().ifBlank { "ALPHA" }
+            val activeAuthor = _currentProfile.value.trim().ifBlank { "Operative" }
+
+            // Fetch remote general database records from Supabase
+            val remoteRecords = SupabaseClient.fetchGeneralRecords(crewId)
+            val remoteIps = remoteRecords.map { it.ip.lowercase() }.toSet()
+            val remoteNames = remoteRecords.map { it.name.lowercase() }.toSet()
+
+            // Local targets from Room (Internal, External, General)
+            val localInternal = repository.getTargets(DatabaseScope.INTERNAL).first()
+            val localExternal = repository.getTargets(DatabaseScope.EXTERNAL).first()
+            val localGeneral = repository.getTargets(DatabaseScope.GENERAL).first()
+            val allLocal = (localInternal + localExternal + localGeneral).distinctBy { if (it.ip.isNotBlank()) it.ip.lowercase() else it.name.lowercase() }
+
+            var uploadedCount = 0
+            var duplicatesCount = 0
+
+            allLocal.forEach { target ->
+                val ipMatch = target.ip.isNotBlank() && remoteIps.contains(target.ip.lowercase())
+                val nameMatch = target.name.isNotBlank() && remoteNames.contains(target.name.lowercase())
+
+                if (!ipMatch && !nameMatch) {
+                    // Upload new record to Supabase, marked with active user as author/contributor
+                    val recordToUpload = target.copy(
+                        scope = DatabaseScope.GENERAL,
+                        crew = crewId,
+                        contributor = activeAuthor,
+                        lastUpdated = System.currentTimeMillis()
+                    )
+                    repository.insertOrUpdateTarget(recordToUpload)
+                    if (_isGeneralDbAuthenticated.value) {
+                        SupabaseClient.insertGeneralRecord(recordToUpload)
+                    }
+                    uploadedCount++
+                } else {
+                    duplicatesCount++
+                }
+            }
+
+            // Sync down remote records to local Room GENERAL DB
+            remoteRecords.forEach { repository.insertOrUpdateTarget(it) }
+
+            _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
+            appendScannerLog("[SYNC_ONLINE] Succeeded: $uploadedCount new local record(s) uploaded to Supabase as author '$activeAuthor'. $duplicatesCount duplicate(s) preserved.")
+            appendScannerLog("[SYNC COMPLETE] $uploadedCount new targets pushed to $crewId.")
+            onResult?.invoke(uploadedCount, duplicatesCount, activeAuthor)
+        }
+    }
+
     fun exportAllToGeneralDatabase(onResult: (Int) -> Unit) {
         viewModelScope.launch {
             val count = repository.exportAllToGeneral()
@@ -1066,6 +1314,30 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
+    fun loginOperativeLocal(username: String, passcode: String, onResult: ((Boolean, String) -> Unit)? = null) {
+        val cleanName = username.trim()
+        if (cleanName.isBlank()) {
+            onResult?.invoke(false, "ERROR: Operative username cannot be empty")
+            return
+        }
+        _currentProfile.value = cleanName
+        saveSession()
+        appendScannerLog("[OPERATOR_AUTH] Personal operative session active as '$cleanName'")
+        onResult?.invoke(true, "SUCCESS // Operative session set: $cleanName")
+    }
+
+    fun authenticateOAuth(provider: String, targetOperative: String = "CyberGhost_88", onResult: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch {
+            _isSupabaseLoading.value = true
+            val providerTag = targetOperative.ifBlank { "CyberGhost_88" }
+            _currentProfile.value = providerTag
+            saveSession()
+            _isSupabaseLoading.value = false
+            appendScannerLog("[OPERATOR_AUTH] Quick OAuth login via $provider succeeded as '$providerTag'")
+            onResult?.invoke(true, "SUCCESS // Operative session set: $providerTag")
+        }
+    }
+
     private fun startOnlineCrewSync(crewId: String) {
         onlineSyncJob?.cancel()
         onlineSyncJob = viewModelScope.launch {
@@ -1146,12 +1418,31 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                         wallet = "0x44c1...b52",
                         contributor = "ZeroByte",
                         scope = DatabaseScope.GENERAL
+                    ),
+                    TargetEntity(
+                        ip = "192.168.45.12",
+                        name = "Target-192.168.45.12",
+                        level = 65,
+                        fw = 50,
+                        enc = 48,
+                        rep = 1200,
+                        score = 3500,
+                        crew = crewId,
+                        stolenCrypto = 620000L,
+                        hitCount = 10,
+                        avgPerHit = 62000L,
+                        crPerHour = 95000L,
+                        peakHour = "16:00",
+                        wallet = "hx3aC9...9811",
+                        contributor = "Viper_Null",
+                        scope = DatabaseScope.GENERAL
                     )
                 )
                 seedTargets.forEach {
                     repository.insertOrUpdateTarget(it)
                     SupabaseClient.insertGeneralRecord(it)
                 }
+                appendScannerLog("[CREW_FEED] Downloaded pre-existing record from Viper_Null: IP 192.168.45.12 | Wallet: hx3aC9...9811")
             }
 
             // Real-time presence heartbeat loop
@@ -1170,6 +1461,11 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 }
             }
         }
+    }
+
+    fun stopOnlineCrewSync() {
+        onlineSyncJob?.cancel()
+        onlineSyncJob = null
     }
 
     fun disconnectGeneralDatabase() {
