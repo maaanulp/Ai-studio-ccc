@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.data.local.AppDatabase
@@ -27,7 +26,7 @@ class MainActivity : ComponentActivity() {
                     logEntryDao = database.logEntryDao(),
                     ocrResultDao = database.ocrTextResultDao()
                 )
-                return IntelViewModel(repository) as T
+                return IntelViewModel(application, repository) as T
             }
         }
     }
@@ -41,14 +40,4 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-}
-
-@Composable
-fun Greeting(name: String, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
-    androidx.compose.material3.Text(
-        text = "Crypt0 Cr3w Central: Welcome $name",
-        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-        color = com.example.ui.theme.MatrixGreenPrimary,
-        modifier = modifier
-    )
 }

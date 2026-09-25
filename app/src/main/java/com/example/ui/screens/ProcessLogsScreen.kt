@@ -91,9 +91,9 @@ fun ProcessLogsScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        // Section Subtitle
+        // Subtitle
         Text(
-            text = "SECTION 01 // PARSE & INGEST LOGS",
+            text = "PARSE & INGEST LOGS",
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             color = MatrixGreenDim,
@@ -133,7 +133,7 @@ fun ProcessLogsScreen(
         if (processTab == ProcessLogsTab.INPUT_LOGS) {
             TerminalContainer(
                 title = "STREAM: INPUT LOGS (PERSONAL ACCOUNT)",
-                trailingBadge = "INTERNAL DB"
+                subtitle = "INTERNAL DB"
             ) {
                 Column {
                     // Buffer control bar with clipboard paste & clear
@@ -210,7 +210,7 @@ fun ProcessLogsScreen(
         } else {
             TerminalContainer(
                 title = "STREAM: OUTPUT LOGS (VICTIM RAID HISTORY)",
-                trailingBadge = "EXTERNAL DB"
+                subtitle = "EXTERNAL DB"
             ) {
                 Column {
                     // Buffer control bar with clipboard paste & clear

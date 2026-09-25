@@ -29,8 +29,8 @@ data class MatrixDrop(
 @Composable
 fun MatrixRainCanvas(
     modifier: Modifier = Modifier.fillMaxSize(),
-    alpha: Float = 0.28f,
-    fontSize: Float = 32f
+    alpha: Float = 0.06f,
+    fontSize: Float = 30f
 ) {
     var drops by remember { mutableStateOf<List<MatrixDrop>?>(null) }
     var tick by remember { mutableFloatStateOf(0f) }
@@ -43,27 +43,27 @@ fun MatrixRainCanvas(
         }
     }
 
-    val paintHead = remember(fontSize) {
+    val paintHead = remember(fontSize, alpha) {
         Paint().apply {
-            color = android.graphics.Color.argb((alpha * 255).toInt().coerceIn(0, 255), 200, 255, 210)
+            color = android.graphics.Color.argb((alpha * 220).toInt().coerceIn(0, 255), 170, 255, 185)
             textSize = fontSize
             isAntiAlias = true
             typeface = android.graphics.Typeface.MONOSPACE
         }
     }
 
-    val paintBody = remember(fontSize) {
+    val paintBody = remember(fontSize, alpha) {
         Paint().apply {
-            color = android.graphics.Color.argb((alpha * 200).toInt().coerceIn(0, 255), 0, 255, 102)
+            color = android.graphics.Color.argb((alpha * 150).toInt().coerceIn(0, 255), 0, 200, 70)
             textSize = fontSize
             isAntiAlias = true
             typeface = android.graphics.Typeface.MONOSPACE
         }
     }
 
-    val paintTail = remember(fontSize) {
+    val paintTail = remember(fontSize, alpha) {
         Paint().apply {
-            color = android.graphics.Color.argb((alpha * 80).toInt().coerceIn(0, 255), 5, 80, 25)
+            color = android.graphics.Color.argb((alpha * 55).toInt().coerceIn(0, 255), 0, 65, 15)
             textSize = fontSize
             isAntiAlias = true
             typeface = android.graphics.Typeface.MONOSPACE
@@ -71,19 +71,21 @@ fun MatrixRainCanvas(
     }
 
     Canvas(modifier = modifier) {
+        // Read tick to trigger redraw on each frame
+        val _frame = tick
         val width = size.width
         val height = size.height
         if (width <= 0 || height <= 0) return@Canvas
 
-        val columnWidth = fontSize * 0.9f
+        val columnWidth = fontSize * 0.95f
         val columnsCount = (width / columnWidth).toInt().coerceAtLeast(1)
 
         val activeDrops = drops ?: run {
             val list = List(columnsCount) {
-                val len = Random.nextInt(8, 24)
+                val len = Random.nextInt(6, 18)
                 MatrixDrop(
                     y = Random.nextFloat() * height,
-                    speed = Random.nextFloat() * 4f + 3f,
+                    speed = Random.nextFloat() * 2.5f + 1.5f,
                     length = len,
                     chars = CharArray(len) { MATRIX_CHARS[Random.nextInt(MATRIX_CHARS.size)] }
                 )
@@ -98,16 +100,16 @@ fun MatrixRainCanvas(
                 val drop = activeDrops[i]
                 val x = i * columnWidth
 
-                // Move drop down
+                // Move drop down smoothly
                 drop.y += drop.speed
                 if (drop.y - drop.length * fontSize > height) {
-                    drop.y = -Random.nextFloat() * 100f
-                    drop.length = Random.nextInt(8, 22)
+                    drop.y = -Random.nextFloat() * 80f
+                    drop.length = Random.nextInt(6, 18)
                     drop.chars = CharArray(drop.length) { MATRIX_CHARS[Random.nextInt(MATRIX_CHARS.size)] }
                 }
 
-                // Random glyph mutation
-                if (Random.nextFloat() < 0.05f) {
+                // Subtle random glyph mutation
+                if (Random.nextFloat() < 0.03f) {
                     val changeIdx = Random.nextInt(drop.length)
                     drop.chars[changeIdx] = MATRIX_CHARS[Random.nextInt(MATRIX_CHARS.size)]
                 }
@@ -118,7 +120,7 @@ fun MatrixRainCanvas(
                     if (charY in -fontSize..(height + fontSize)) {
                         val paint = when {
                             j == drop.length - 1 -> paintHead
-                            j > drop.length - 4 -> paintBody
+                            j > drop.length - 3 -> paintBody
                             else -> paintTail
                         }
                         native.drawText(drop.chars[j].toString(), x, charY, paint)

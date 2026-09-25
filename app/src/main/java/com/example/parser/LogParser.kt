@@ -25,7 +25,7 @@ object LogParser {
     private val ACCESS_REGEX = Regex("""Accessed device at\s+([\w\.\*:]+)""", RegexOption.IGNORE_CASE)
     private val STOLE_REGEX = Regex("""Stole\s+([0-9,]+)\s+Crypto from\s+([\w\.\-]+)""", RegexOption.IGNORE_CASE)
 
-    fun parseLogs(rawText: String, scope: DatabaseScope, contributor: String = "m0lt0rn"): ParseResult {
+    fun parseLogs(rawText: String, scope: DatabaseScope, contributor: String = ""): ParseResult {
         val lines = rawText.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }

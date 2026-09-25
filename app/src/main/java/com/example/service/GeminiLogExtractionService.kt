@@ -32,13 +32,26 @@ data class GeminiParsedLog(
 data class GeminiParsedTarget(
     val ip: String?,
     val name: String?,
-    val level: Int,
-    val fw: Int,
-    val enc: Int,
-    val wallet: String?,
-    val crew: String?,
-    val stolenCrypto: Long,
-    val rep: Int = 0
+    val level: Int = 1,
+    val fw: Int = 0,
+    val enc: Int = 0,
+    val wallet: String? = null,
+    val crew: String? = null,
+    val stolenCrypto: Long = 0L,
+    val rep: Int = 0,
+    val score: Long = 0L,
+    val antivirusLvl: Int = 0,
+    val spamLvl: Int = 0,
+    val rootkitLvl: Int = 0,
+    val firewallAppLvl: Int = 0,
+    val bypasserLvl: Int = 0,
+    val passwordCrackerLvl: Int = 0,
+    val passwordEncryptorLvl: Int = 0,
+    val proxyLvl: Int = 0,
+    val traceLvl: Int = 0,
+    val keygenLvl: Int = 0,
+    val siphonLvl: Int = 0,
+    val appsParsed: Boolean = false
 )
 
 data class GeminiExtractionResult(
@@ -145,10 +158,10 @@ object GeminiLogExtractionService {
         val base64Image = bitmapToBase64(scaledBitmap)
 
         val prompt = """
-            You are an expert OCR and intelligence extractor for the hacking game Hack Ex / Hack Ex 2.
+            You are an expert OCR and intelligence extractor for cyber attack logs and target dossiers.
             Analyze this uploaded screenshot carefully.
             The screenshot typically depicts:
-            1. Hack Ex 2 Ingested Logs (Personal Input logs or Victim Output raid logs). In these logs:
+            1. Ingested Logs (Personal Input logs or Victim Output raid logs). In these logs:
                - IP addresses appear (e.g. 192.168.1.100 or masked xxx.xxx.xxx.xxx)
                - Crypto amounts stolen or transferred appear (numbers followed by ₡, Cr, or crypto)
                - Victim or target crypto wallet hashes appear (e.g. 0x892a...f412)
@@ -179,9 +192,23 @@ object GeminiLogExtractionService {
                 "enc": 0,
                 "wallet": "string or null",
                 "crew": "string or null",
-                "stolenCrypto": 0
+                "stolenCrypto": 0,
+                "rep": 0,
+                "score": 0,
+                "antivirusLvl": 0,
+                "spamLvl": 0,
+                "rootkitLvl": 0,
+                "firewallAppLvl": 0,
+                "bypasserLvl": 0,
+                "passwordCrackerLvl": 0,
+                "passwordEncryptorLvl": 0,
+                "proxyLvl": 0,
+                "traceLvl": 0,
+                "keygenLvl": 0,
+                "siphonLvl": 0
               }
             }
+            Extract installed software/apps levels if present on the screen (Antivirus, Spam, Rootkit, Firewall, Bypasser, Password Cracker, Password Encryptor, Proxy, Trace, Keygen, Siphon).
             Do not wrap in markdown quotes if possible, output pure JSON.
         """.trimIndent()
 
@@ -325,6 +352,19 @@ object GeminiLogExtractionService {
                 val ip = targetObj.optString("ip").takeIf { it.isNotBlank() && it != "null" }
                 val name = targetObj.optString("name").takeIf { it.isNotBlank() && it != "null" }
                 if (ip != null || name != null) {
+                    val avLvl = targetObj.optInt("antivirusLvl", 0)
+                    val spmLvl = targetObj.optInt("spamLvl", 0)
+                    val rkLvl = targetObj.optInt("rootkitLvl", 0)
+                    val fwAppLvl = targetObj.optInt("firewallAppLvl", 0)
+                    val byLvl = targetObj.optInt("bypasserLvl", 0)
+                    val pcLvl = targetObj.optInt("passwordCrackerLvl", 0)
+                    val peLvl = targetObj.optInt("passwordEncryptorLvl", 0)
+                    val pxLvl = targetObj.optInt("proxyLvl", 0)
+                    val trLvl = targetObj.optInt("traceLvl", 0)
+                    val kgLvl = targetObj.optInt("keygenLvl", 0)
+                    val siphLvl = targetObj.optInt("siphonLvl", 0)
+                    val hasApps = avLvl > 0 || spmLvl > 0 || rkLvl > 0 || fwAppLvl > 0 || byLvl > 0 || pcLvl > 0 || peLvl > 0 || pxLvl > 0 || trLvl > 0 || kgLvl > 0 || siphLvl > 0
+
                     parsedTarget = GeminiParsedTarget(
                         ip = ip,
                         name = name,
@@ -333,7 +373,21 @@ object GeminiLogExtractionService {
                         enc = targetObj.optInt("enc", 0),
                         wallet = targetObj.optString("wallet").takeIf { it.isNotBlank() && it != "null" },
                         crew = targetObj.optString("crew").takeIf { it.isNotBlank() && it != "null" },
-                        stolenCrypto = targetObj.optLong("stolenCrypto", 0L)
+                        stolenCrypto = targetObj.optLong("stolenCrypto", 0L),
+                        rep = targetObj.optInt("rep", 0),
+                        score = targetObj.optLong("score", 0L),
+                        antivirusLvl = avLvl,
+                        spamLvl = spmLvl,
+                        rootkitLvl = rkLvl,
+                        firewallAppLvl = fwAppLvl,
+                        bypasserLvl = byLvl,
+                        passwordCrackerLvl = pcLvl,
+                        passwordEncryptorLvl = peLvl,
+                        proxyLvl = pxLvl,
+                        traceLvl = trLvl,
+                        keygenLvl = kgLvl,
+                        siphonLvl = siphLvl,
+                        appsParsed = hasApps
                     )
                 }
             }
@@ -372,23 +426,36 @@ object GeminiLogExtractionService {
 
         // 1. Process explicit target
         result.extractedTarget?.let { pt ->
-            if (!pt.ip.isNullOrBlank()) {
-                targets.add(
-                    TargetEntity(
-                        ip = pt.ip,
-                        name = pt.name ?: "GeminiHost",
-                        level = if (pt.level > 0) pt.level else 1,
-                        fw = pt.fw,
-                        enc = pt.enc,
-                        wallet = pt.wallet ?: "",
-                        crew = pt.crew ?: "",
-                        stolenCrypto = pt.stolenCrypto,
-                        scope = scope,
-                        contributor = contributor,
-                        lastUpdated = System.currentTimeMillis()
-                    )
+            val targetIp = pt.ip.takeIf { !it.isNullOrBlank() } ?: (if (!pt.name.isNullOrBlank()) "Pending_IP_${pt.name}" else "Host_${System.currentTimeMillis() % 1000}")
+            targets.add(
+                TargetEntity(
+                    ip = targetIp,
+                    name = pt.name ?: "GeminiHost",
+                    level = if (pt.level > 0) pt.level else 1,
+                    fw = pt.fw,
+                    enc = pt.enc,
+                    rep = pt.rep,
+                    score = pt.score,
+                    wallet = pt.wallet ?: "",
+                    crew = pt.crew ?: "",
+                    stolenCrypto = pt.stolenCrypto,
+                    scope = scope,
+                    contributor = contributor,
+                    lastUpdated = System.currentTimeMillis(),
+                    antivirusLvl = pt.antivirusLvl,
+                    spamLvl = pt.spamLvl,
+                    rootkitLvl = pt.rootkitLvl,
+                    firewallAppLvl = pt.firewallAppLvl,
+                    bypasserLvl = pt.bypasserLvl,
+                    passwordCrackerLvl = pt.passwordCrackerLvl,
+                    passwordEncryptorLvl = pt.passwordEncryptorLvl,
+                    proxyLvl = pt.proxyLvl,
+                    traceLvl = pt.traceLvl,
+                    keygenLvl = pt.keygenLvl,
+                    siphonLvl = pt.siphonLvl,
+                    appsParsed = pt.appsParsed
                 )
-            }
+            )
         }
 
         // 2. Process logs

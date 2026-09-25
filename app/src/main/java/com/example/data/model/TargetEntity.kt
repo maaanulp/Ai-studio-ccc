@@ -27,7 +27,7 @@ data class TargetEntity(
     val peakHour: String = "--:--",   // Peak attack window
     val wallet: String = "",
     val scope: DatabaseScope = DatabaseScope.INTERNAL,
-    val contributor: String = "m0lt0rn",
+    val contributor: String = "",
     val lastUpdated: Long = System.currentTimeMillis(),
 
     // 11 Installed Apps Levels (from APPS screenshot OCR)

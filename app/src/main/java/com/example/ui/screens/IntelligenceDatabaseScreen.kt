@@ -103,14 +103,22 @@ fun IntelligenceDatabaseScreen(
     val sortField by viewModel.currentSort.collectAsState()
     val isGenAuthenticated by viewModel.isGeneralDbAuthenticated.collectAsState()
     val genAuthError by viewModel.generalDbAuthError.collectAsState()
+    val terminalAuthFeedback by viewModel.terminalAuthFeedback.collectAsState()
+    val isCurrentUserAdmin by viewModel.isCurrentUserAdmin.collectAsState()
+    val isSupabaseLoading by viewModel.isSupabaseLoading.collectAsState()
+    val currentProfile by viewModel.currentProfile.collectAsState()
 
     val crewId by viewModel.crewIdInput.collectAsState()
     val crewPassword by viewModel.crewPasswordInput.collectAsState()
+    val operativeUser by viewModel.operativeUsernameInput.collectAsState()
+    val operativePassword by viewModel.operativePasswordInput.collectAsState()
 
     val context = LocalContext.current
     var showAdminPurgeDialog by remember { mutableStateOf(false) }
     var adminPasswordAttempt by remember { mutableStateOf("") }
-    var isCrewLoginExpanded by remember { mutableStateOf(!isGenAuthenticated) }
+    var showOperativeAuthBlock by remember { mutableStateOf(false) }
+    var operativeRoleSelection by remember { mutableStateOf("OPERATIVE") }
+    var activeCrewAction by remember { mutableStateOf<String?>("AUTH") }
 
     Column(
         modifier = modifier
@@ -119,7 +127,7 @@ fun IntelligenceDatabaseScreen(
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Text(
-            text = "SECTION 04 // INTELLIGENCE DATABASE",
+            text = "INTELLIGENCE DATABASE",
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             color = MatrixGreenDim,
@@ -300,61 +308,127 @@ fun IntelligenceDatabaseScreen(
             }
 
             DatabaseTab.GENERAL -> {
-                // Online General Database Section
+                // Online General Database Section (Supabase Integration)
                 TerminalContainer(
-                    title = "CREW SHARED NETWORK // SUPABASE REALTIME",
-                    trailingBadge = if (isGenAuthenticated) "succeed" else "DISCONNECTED"
+                    title = "CREW SHARED NETWORK // GENERAL DB",
+                    trailingBadge = null
                 ) {
-                    Column {
-                        // Expandable Server Crew login / configuration
-                        Row(
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Real-time Terminal Feedback Bar
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { isCrewLoginExpanded = !isCrewLoginExpanded }
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MatrixDarkSurface)
+                                .border(
+                                    BorderStroke(
+                                        1.dp,
+                                        if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber.copy(alpha = 0.7f)
+                                    ),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = if (isGenAuthenticated) Icons.Default.CheckCircle else Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (isGenAuthenticated) "succeed" else "error no general data base acces",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber
+                                    )
+                                    Text(
+                                        text = if (isGenAuthenticated) "[SUPABASE SYNCED]" else "[UNAUTHENTICATED]",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        color = if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber
+                                    )
+                                }
                                 Text(
-                                    text = if (isGenAuthenticated) "CREW AUTHENTICATED: [succeed]" else "CREW AUTHENTICATION REQUIRED",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isGenAuthenticated) MatrixGreenPrimary else CyberAmber
-                                )
-                            }
-                            Icon(
-                                imageVector = if (isCrewLoginExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = null,
-                                tint = MatrixGreenPrimary
-                            )
-                        }
-
-                        AnimatedVisibility(visible = isCrewLoginExpanded) {
-                            Column(modifier = Modifier.padding(top = 8.dp)) {
-                                Text(
-                                    text = "Each crew connects via a shared Crew ID and Crew Secret Access Key hosted via secure online relay.",
+                                    text = if (isGenAuthenticated)
+                                        "> TERMINAL STATUS: succeed // Crew [${crewId.ifBlank { "CCC" }}] online"
+                                    else
+                                        "> TERMINAL STATUS: error no general data base acces // Credentials required",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     color = MatrixTextSecondary
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
 
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Personal Operative Account Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MatrixDarkSurfaceVariant)
+                                .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "OPERATIVE:",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    color = MatrixTextMuted
+                                )
+                                Text(
+                                    text = if (currentProfile.isNotBlank()) "[$currentProfile] ${if (isCurrentUserAdmin) "[ADMIN]" else "[OPERATIVE]"}" else "[UNREGISTERED]",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (currentProfile.isNotBlank()) MatrixGreenPrimary else CyberAmber
+                                )
+                            }
+                            HackerButton(
+                                text = if (showOperativeAuthBlock) "[HIDE]" else "[CHANGE ACCOUNT]",
+                                onClick = { showOperativeAuthBlock = !showOperativeAuthBlock },
+                                testTag = "toggle_operative_auth_btn"
+                            )
+                        }
+
+                        // Expandable Operative Account Block
+                        AnimatedVisibility(visible = showOperativeAuthBlock) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MatrixDarkSurface)
+                                    .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
+                                    .padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "OPERATIVE PERSONAL IDENTITY",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MatrixGreenPrimary
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     OutlinedTextField(
-                                        value = crewId,
-                                        onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
-                                        label = { Text("CREW ID", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                                        value = operativeUser,
+                                        onValueChange = { viewModel.setOperativeCredentials(it, operativePassword) },
+                                        label = { Text("USERNAME", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                        placeholder = { Text("e.g. Ghost_01", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
                                         singleLine = true,
-                                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixGreenPrimary),
+                                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedContainerColor = MatrixDarkBackground,
                                             unfocusedContainerColor = MatrixDarkBackground,
@@ -364,119 +438,297 @@ fun IntelligenceDatabaseScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     OutlinedTextField(
-                                        value = crewPassword,
-                                        onValueChange = { viewModel.setCrewCredentials(crewId, it) },
-                                        label = { Text("CREW PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                                        value = operativePassword,
+                                        onValueChange = { viewModel.setOperativeCredentials(operativeUser, it) },
+                                        label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                        placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
                                         singleLine = true,
-                                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixGreenPrimary),
+                                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedContainerColor = MatrixDarkBackground,
                                             unfocusedContainerColor = MatrixDarkBackground,
                                             focusedBorderColor = MatrixGreenPrimary,
                                             unfocusedBorderColor = MatrixBorder
                                         ),
-                                        modifier = Modifier.weight(1.2f)
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     HackerButton(
-                                        text = "[CONNECT / AUTH]",
+                                        text = "[LOGIN]",
                                         onClick = {
-                                            viewModel.authenticateGeneralDatabase()
-                                            if (viewModel.isGeneralDbAuthenticated.value) {
-                                                isCrewLoginExpanded = false
-                                                Toast.makeText(context, "Connected to General Database: Access Granted", Toast.LENGTH_SHORT).show()
+                                            viewModel.loginOrRegisterOperative(
+                                                operativeUser,
+                                                operativePassword,
+                                                operativeRoleSelection
+                                            ) { success, msg ->
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                if (success) showOperativeAuthBlock = false
                                             }
                                         },
                                         modifier = Modifier.weight(1f),
-                                        testTag = "crew_connect_btn"
+                                        testTag = "operative_login_btn"
                                     )
                                     HackerButton(
-                                        text = "[CREATE SERVER CREW]",
+                                        text = "[REGISTER]",
                                         onClick = {
-                                            Toast.makeText(context, "Server Crew created with ID: $crewId. Share credentials with crew operatives.", Toast.LENGTH_LONG).show()
+                                            viewModel.loginOrRegisterOperative(
+                                                operativeUser,
+                                                operativePassword,
+                                                "OPERATIVE"
+                                            ) { success, msg ->
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                if (success) showOperativeAuthBlock = false
+                                            }
                                         },
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.weight(1f),
+                                        testTag = "operative_register_btn"
                                     )
                                 }
                             }
                         }
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                        if (!isGenAuthenticated) {
+                            // Crew Login / Server Creation Form Tabs
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                HackerButton(
+                                    text = if (activeCrewAction == "AUTH") "[LOGIN CREW ●]" else "[LOGIN CREW]",
+                                    onClick = { activeCrewAction = "AUTH" },
+                                    modifier = Modifier.weight(1f),
+                                    testTag = "crew_auth_tab_btn"
+                                )
+                                HackerButton(
+                                    text = if (activeCrewAction == "CREATE") "[CREATE CREW ●]" else "[CREATE CREW]",
+                                    onClick = { activeCrewAction = "CREATE" },
+                                    modifier = Modifier.weight(1f),
+                                    testTag = "crew_create_tab_btn"
+                                )
+                            }
 
-                if (!isGenAuthenticated) {
-                    // Show required error state when not logged in
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MatrixDarkSurfaceVariant)
-                            .border(BorderStroke(1.5.dp, CyberAmber), RoundedCornerShape(4.dp))
-                            .padding(14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.Error,
-                                contentDescription = null,
-                                tint = CyberAmber,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "error no general data base acces",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = CyberAmber
-                            )
+                            // Crew Login or Create Block
+                            if (activeCrewAction == "AUTH") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MatrixDarkSurfaceVariant)
+                                        .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "CREW SERVER LOGIN",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MatrixGreenPrimary
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = crewId,
+                                            onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
+                                            label = { Text("CREW ID", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                            placeholder = { Text("ALPHA", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                            singleLine = true,
+                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = MatrixDarkBackground,
+                                                unfocusedContainerColor = MatrixDarkBackground,
+                                                focusedBorderColor = MatrixGreenPrimary,
+                                                unfocusedBorderColor = MatrixBorder
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        OutlinedTextField(
+                                            value = crewPassword,
+                                            onValueChange = { viewModel.setCrewCredentials(crewId, it) },
+                                            label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                            placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                            singleLine = true,
+                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = MatrixDarkBackground,
+                                                unfocusedContainerColor = MatrixDarkBackground,
+                                                focusedBorderColor = MatrixGreenPrimary,
+                                                unfocusedBorderColor = MatrixBorder
+                                            ),
+                                            modifier = Modifier.weight(1.2f)
+                                        )
+                                    }
+                                    HackerButton(
+                                        text = if (isSupabaseLoading) "[CONNECTING...]" else "[CONNECT CREW SERVER]",
+                                        onClick = {
+                                            viewModel.authenticateGeneralDatabase { success, message ->
+                                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        testTag = "crew_confirm_auth_btn"
+                                    )
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MatrixDarkSurfaceVariant)
+                                        .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(4.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "REGISTER NEW SERVER CREW",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MatrixGreenPrimary
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = crewId,
+                                            onValueChange = { viewModel.setCrewCredentials(it, crewPassword) },
+                                            label = { Text("NEW CREW ID", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                            placeholder = { Text("SHADOW", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                            singleLine = true,
+                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = MatrixDarkBackground,
+                                                unfocusedContainerColor = MatrixDarkBackground,
+                                                focusedBorderColor = MatrixGreenPrimary,
+                                                unfocusedBorderColor = MatrixBorder
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        OutlinedTextField(
+                                            value = crewPassword,
+                                            onValueChange = { viewModel.setCrewCredentials(crewId, it) },
+                                            label = { Text("PASSWORD", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                                            placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                                            singleLine = true,
+                                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = MatrixDarkBackground,
+                                                unfocusedContainerColor = MatrixDarkBackground,
+                                                focusedBorderColor = MatrixGreenPrimary,
+                                                unfocusedBorderColor = MatrixBorder
+                                            ),
+                                            modifier = Modifier.weight(1.2f)
+                                        )
+                                    }
+                                    HackerButton(
+                                        text = if (isSupabaseLoading) "[CREATING...]" else "[REGISTER & BECOME ADMIN]",
+                                        onClick = {
+                                            if (crewId.trim().isNotBlank() && crewPassword.trim().isNotBlank()) {
+                                                viewModel.createServerCrew(crewId.trim(), crewPassword.trim()) { success, message ->
+                                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        testTag = "crew_confirm_create_btn"
+                                    )
+                                }
+                            }
+                        } else {
+                            // Authenticated Crew Banner
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MatrixDarkSurfaceVariant)
+                                    .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "CREW: [${if (crewId.isNotBlank()) crewId else "CCC"}]",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MatrixGreenPrimary
+                                    )
+                                    Text(
+                                        text = "UPLINK: succeed // Encrypted sync active",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 9.sp,
+                                        color = MatrixGreenDim
+                                    )
+                                }
+                                HackerButton(
+                                    text = "[DISCONNECT]",
+                                    onClick = {
+                                        viewModel.disconnectGeneralDatabase()
+                                        Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
+                                    },
+                                    testTag = "crew_disconnect_btn"
+                                )
+                            }
+
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Expand CREW AUTHENTICATION above with your Crew ID and Secret Access Key to decrypt shared operative database.",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                color = MatrixTextSecondary
+
+                            // Search Bar + Grid Table + Admin Purge
+                            HackerSearchField(
+                                query = generalQuery,
+                                onQueryChange = { viewModel.setGeneralSearchQuery(it) },
+                                placeholder = "Search IP, account, app or wallet",
+                                testTag = "search_general"
                             )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            IntelGridTable(
+                                targets = generalTargets,
+                                sortField = sortField,
+                                onToggleFw = { viewModel.toggleSortFw() },
+                                onToggleAvg = { viewModel.toggleSortAvg() },
+                                onSelectTarget = { viewModel.selectTargetForDossier(it) }
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (isCurrentUserAdmin) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    RedPurgeButton(
+                                        text = "purge general data base [admin]",
+                                        onPurgeConfirmed = { showAdminPurgeDialog = true },
+                                        dialogTitle = "ADMIN CREDENTIAL REQUIRED",
+                                        dialogMessage = "Enter Crew Admin authorization key to purge the shared crew repository.",
+                                        testTag = "purge_general_admin_btn"
+                                    )
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Text(
+                                        text = "[PURGE RESTRICTED TO CREW ADMIN]",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        color = MatrixTextMuted
+                                    )
+                                }
+                            }
                         }
-                    }
-                } else {
-                    // Authenticated View: Search Bar + Grid + Purge Admin
-                    HackerSearchField(
-                        query = generalQuery,
-                        onQueryChange = { viewModel.setGeneralSearchQuery(it) },
-                        placeholder = "Search IP, account, app or wallet",
-                        testTag = "search_general"
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    IntelGridTable(
-                        targets = generalTargets,
-                        sortField = sortField,
-                        onToggleFw = { viewModel.toggleSortFw() },
-                        onToggleAvg = { viewModel.toggleSortAvg() },
-                        onSelectTarget = { viewModel.selectTargetForDossier(it) }
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Purge General Database [admin] at the bottom right
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        RedPurgeButton(
-                            text = "purge general data base [admin]",
-                            onPurgeConfirmed = { showAdminPurgeDialog = true },
-                            dialogTitle = "ADMIN CREDENTIAL REQUIRED",
-                            dialogMessage = "Enter Crew Admin authorization key to purge the shared crew repository.",
-                            testTag = "purge_general_admin_btn"
-                        )
                     }
                 }
             }
@@ -530,9 +782,9 @@ fun IntelligenceDatabaseScreen(
                             if (success) {
                                 showAdminPurgeDialog = false
                                 adminPasswordAttempt = ""
-                                Toast.makeText(context, "General database purged by Admin", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "succeed", Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(context, "Access Denied: Invalid Admin Password", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "error no general data base acces", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
@@ -567,22 +819,13 @@ private fun PrivacyReminderBanner(text: String) {
             .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.Security,
-                contentDescription = null,
-                tint = MatrixGreenSecondary,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "NOTICE // $text",
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MatrixGreenSecondary
-            )
-        }
+        Text(
+            text = "NOTICE // $text",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MatrixGreenSecondary
+        )
     }
 }
 

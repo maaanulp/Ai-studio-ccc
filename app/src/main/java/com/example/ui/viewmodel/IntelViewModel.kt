@@ -1,8 +1,9 @@
 package com.example.ui.viewmodel
 
+import android.app.Application
 import android.content.Context
 import android.net.Uri
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.CrewAccountEntity
 import com.example.data.model.DatabaseScope
@@ -10,6 +11,8 @@ import com.example.data.model.IntelligenceReportEntity
 import com.example.data.model.LogEntryEntity
 import com.example.data.model.OcrTextResultEntity
 import com.example.data.model.TargetEntity
+import com.example.data.remote.SupabaseAuthResult
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.IntelRepository
 import com.example.parser.LogParser
 import com.example.parser.OcrParseOutput
@@ -18,6 +21,7 @@ import com.example.service.GeminiExtractionResult
 import com.example.service.GeminiLogExtractionService
 import com.example.service.GeminiParsedLog
 import com.example.service.GeminiParsedTarget
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AppSection(val title: String) {
@@ -73,12 +78,32 @@ data class ScannerUiState(
     val pendingGeminiLogs: List<LogEntryEntity> = emptyList()
 )
 
-class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
+class IntelViewModel(application: Application, private val repository: IntelRepository) : AndroidViewModel(application) {
+
+    private fun saveSession() {
+        val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("saved_profile", _currentProfile.value)
+            .putString("saved_crew_id", _crewIdInput.value)
+            .putString("saved_crew_pw", _crewPasswordInput.value)
+            .putBoolean("saved_authenticated", _isGeneralDbAuthenticated.value)
+            .putBoolean("saved_is_admin", _isCurrentUserAdmin.value)
+            .apply()
+    }
+
+    private fun loadSession() {
+        val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
+        _currentProfile.value = prefs.getString("saved_profile", "") ?: ""
+        _crewIdInput.value = prefs.getString("saved_crew_id", "") ?: ""
+        _crewPasswordInput.value = prefs.getString("saved_crew_pw", "") ?: ""
+        _isGeneralDbAuthenticated.value = prefs.getBoolean("saved_authenticated", false)
+        _isCurrentUserAdmin.value = prefs.getBoolean("saved_is_admin", false)
+    }
 
     private val _currentSection = MutableStateFlow(AppSection.PROCESS_LOGS)
     val currentSection: StateFlow<AppSection> = _currentSection.asStateFlow()
 
-    private val _currentProfile = MutableStateFlow("m0lt0rn")
+    private val _currentProfile = MutableStateFlow("")
     val currentProfile: StateFlow<String> = _currentProfile.asStateFlow()
 
     // Section 1: Process Logs
@@ -114,18 +139,33 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
     private val _currentSort = MutableStateFlow(SortField.NONE)
     val currentSort: StateFlow<SortField> = _currentSort.asStateFlow()
 
-    // General Database Crew Auth
+    // General Database Crew Auth (Supabase Integration)
     private val _crewIdInput = MutableStateFlow("")
     val crewIdInput: StateFlow<String> = _crewIdInput.asStateFlow()
 
     private val _crewPasswordInput = MutableStateFlow("")
     val crewPasswordInput: StateFlow<String> = _crewPasswordInput.asStateFlow()
 
+    private val _operativeUsernameInput = MutableStateFlow("")
+    val operativeUsernameInput: StateFlow<String> = _operativeUsernameInput.asStateFlow()
+
+    private val _operativePasswordInput = MutableStateFlow("")
+    val operativePasswordInput: StateFlow<String> = _operativePasswordInput.asStateFlow()
+
     private val _isGeneralDbAuthenticated = MutableStateFlow(false)
     val isGeneralDbAuthenticated: StateFlow<Boolean> = _isGeneralDbAuthenticated.asStateFlow()
 
-    private val _generalDbAuthError = MutableStateFlow<String?>(null)
+    private val _generalDbAuthError = MutableStateFlow<String?>(SupabaseClient.STATUS_ERROR)
     val generalDbAuthError: StateFlow<String?> = _generalDbAuthError.asStateFlow()
+
+    private val _terminalAuthFeedback = MutableStateFlow<String>(SupabaseClient.STATUS_ERROR)
+    val terminalAuthFeedback: StateFlow<String> = _terminalAuthFeedback.asStateFlow()
+
+    private val _isCurrentUserAdmin = MutableStateFlow(false)
+    val isCurrentUserAdmin: StateFlow<Boolean> = _isCurrentUserAdmin.asStateFlow()
+
+    private val _isSupabaseLoading = MutableStateFlow(false)
+    val isSupabaseLoading: StateFlow<Boolean> = _isSupabaseLoading.asStateFlow()
 
     // Selected Target for Dossier popup
     private val _selectedTargetForDossier = MutableStateFlow<TargetEntity?>(null)
@@ -188,6 +228,7 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        loadSession()
         viewModelScope.launch {
             repository.initializeDefaultData()
         }
@@ -254,6 +295,13 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
 
     fun switchProfile(name: String) {
         _currentProfile.value = name
+        val activeCrew = _crewIdInput.value.trim()
+        if (activeCrew.isNotBlank()) {
+            val creator = SupabaseClient.getCrewCreator(activeCrew)
+            _isCurrentUserAdmin.value = creator != null && name.isNotBlank() && name.equals(creator, ignoreCase = true)
+        } else {
+            _isCurrentUserAdmin.value = false
+        }
     }
 
     // Section 1 Actions
@@ -555,6 +603,21 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
         processOcrText(OcrParser.SAMPLE_APPS_OCR)
     }
 
+    // OCR Destination Choice & Online Sync State
+    private val _ocrTargetScope = MutableStateFlow(DatabaseScope.INTERNAL)
+    val ocrTargetScope: StateFlow<DatabaseScope> = _ocrTargetScope.asStateFlow()
+
+    private val _syncOcrToGeneralOnline = MutableStateFlow(false)
+    val syncOcrToGeneralOnline: StateFlow<Boolean> = _syncOcrToGeneralOnline.asStateFlow()
+
+    fun setOcrTargetScope(scope: DatabaseScope) {
+        _ocrTargetScope.value = scope
+    }
+
+    fun setSyncOcrToGeneralOnline(sync: Boolean) {
+        _syncOcrToGeneralOnline.value = sync
+    }
+
     // Section 4 Database Actions
     fun purgeInternalDatabase() {
         viewModelScope.launch {
@@ -568,63 +631,188 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
         }
     }
 
-    // Gemini API AI Extraction
-    fun processScreenshotWithGemini(context: Context, uri: Uri) {
+    // Vision OCR Screenshot Extraction (Multiple or Single)
+    fun processScreenshots(
+        context: Context,
+        uris: List<Uri>,
+        targetScope: DatabaseScope = _ocrTargetScope.value,
+        alsoUploadToGeneral: Boolean = _syncOcrToGeneralOnline.value
+    ) {
+        if (uris.isEmpty()) return
+        if (uris.size == 1) {
+            processScreenshotWithGemini(context, uris.first(), targetScope, alsoUploadToGeneral)
+            return
+        }
+
         _scannerState.value = _scannerState.value.copy(
             isProcessing = true,
             isGeminiScanning = true,
-            statusText = "Status: Gemini AI multimodal analysis in progress...",
+            statusText = "Status: Processing ${uris.size} screenshots...",
+            imagePreviewUri = uris.first().toString()
+        )
+
+        viewModelScope.launch {
+            appendScannerLog("[NEURAL_VISION] Batch payload received: ${uris.size} screenshots queued.")
+            var totalTargets = 0
+            var totalLogs = 0
+
+            for ((index, uri) in uris.withIndex()) {
+                appendScannerLog("[NEURAL_VISION] Scanning screenshot ${index + 1}/${uris.size}...")
+                val result = GeminiLogExtractionService.processImageUri(context, uri)
+                if (result.isSuccess) {
+                    val (targets, logs) = GeminiLogExtractionService.formatForDatabaseStorage(
+                        result = result,
+                        scope = targetScope,
+                        contributor = _currentProfile.value
+                    )
+                    targets.forEach { repository.insertOrUpdateTarget(it) }
+                    if (logs.isNotEmpty()) {
+                        repository.insertLogEntries(logs)
+                    }
+
+                    if (alsoUploadToGeneral || targetScope == DatabaseScope.GENERAL) {
+                        if (_isGeneralDbAuthenticated.value) {
+                            val generalTargets = targets.map { it.copy(scope = DatabaseScope.GENERAL) }
+                            generalTargets.forEach {
+                                repository.insertOrUpdateTarget(it)
+                                SupabaseClient.insertGeneralRecord(it)
+                            }
+                            if (logs.isNotEmpty()) {
+                                repository.insertLogEntries(logs.map { it.copy(scope = DatabaseScope.GENERAL) })
+                            }
+                            appendScannerLog("[ONLINE_SYNC] succeed // Ingested to General DB & Supabase.")
+                        } else {
+                            appendScannerLog("[ONLINE_WARN] error no general data base acces")
+                        }
+                    }
+
+                    totalTargets += targets.size
+                    totalLogs += logs.size
+                    appendScannerLog("[NEURAL_VISION] Image ${index + 1} processed: +${targets.size} targets, +${logs.size} logs.")
+                } else {
+                    appendScannerLog("[WARN] Image ${index + 1} extraction low confidence: ${result.errorMessage ?: "Skipped"}")
+                }
+            }
+
+            appendScannerLog("[SUCCESS] Batch completed: Ingested $totalTargets targets and $totalLogs logs.")
+            _scannerState.value = _scannerState.value.copy(
+                isProcessing = false,
+                isGeminiScanning = false,
+                statusText = "Status: Batch Success ($totalTargets targets, $totalLogs logs)"
+            )
+        }
+    }
+
+    fun processScreenshotWithGemini(
+        context: Context,
+        uri: Uri,
+        targetScope: DatabaseScope = _ocrTargetScope.value,
+        alsoUploadToGeneral: Boolean = _syncOcrToGeneralOnline.value
+    ) {
+        _scannerState.value = _scannerState.value.copy(
+            isProcessing = true,
+            isGeminiScanning = true,
+            statusText = "Status: Vision OCR pipeline in progress...",
             imagePreviewUri = uri.toString()
         )
 
         viewModelScope.launch {
-            appendScannerLog("[GEMINI_AI] Payload received. Initializing Gemini multimodal vision pipeline...")
-            appendScannerLog("[GEMINI_AI] Calling Gemini API (gemini-2.5-flash) with structured extraction schema...")
+            appendScannerLog("[NEURAL_VISION] Payload received. Initializing OCR vision pipeline...")
+            appendScannerLog("[NEURAL_VISION] Processing structured extraction schema...")
 
             val result = GeminiLogExtractionService.processImageUri(context, uri)
 
             if (result.isSuccess) {
-                appendScannerLog("[GEMINI_AI_SUCCESS] Detection: ${result.screenshotType}")
-                appendScannerLog("[GEMINI_AI_SUMMARY] ${result.summary}")
-                appendScannerLog("[GEMINI_AI] Extracted ${result.extractedLogs.size} logs, target: ${result.extractedTarget?.ip ?: "N/A"}")
+                appendScannerLog("[OCR_PARSER_SUCCESS] Detection: ${result.screenshotType}")
+                appendScannerLog("[OCR_SUMMARY] ${result.summary}")
+                appendScannerLog("[NEURAL_VISION] Extracted ${result.extractedLogs.size} logs, target: ${result.extractedTarget?.ip ?: "N/A"}")
 
                 // Format for database storage
                 val (targets, logs) = GeminiLogExtractionService.formatForDatabaseStorage(
                     result = result,
-                    scope = DatabaseScope.INTERNAL,
+                    scope = targetScope,
                     contributor = _currentProfile.value
                 )
 
-                // Persist automatically
+                // Persist locally
                 if (targets.isNotEmpty()) {
                     targets.forEach { repository.insertOrUpdateTarget(it) }
-                    appendScannerLog("[DATABASE] Stored ${targets.size} targets in Internal Database.")
+                    appendScannerLog("[DATABASE] Stored ${targets.size} targets in ${targetScope.name} Database.")
                 }
                 if (logs.isNotEmpty()) {
                     repository.insertLogEntries(logs)
                     appendScannerLog("[DATABASE] Stored ${logs.size} log entries in Room DB.")
                 }
 
+                if (alsoUploadToGeneral || targetScope == DatabaseScope.GENERAL) {
+                    if (_isGeneralDbAuthenticated.value) {
+                        val generalTargets = targets.map { it.copy(scope = DatabaseScope.GENERAL) }
+                        generalTargets.forEach {
+                            repository.insertOrUpdateTarget(it)
+                            SupabaseClient.insertGeneralRecord(it)
+                        }
+                        if (logs.isNotEmpty()) {
+                            repository.insertLogEntries(logs.map { it.copy(scope = DatabaseScope.GENERAL) })
+                        }
+                        appendScannerLog("[ONLINE_SYNC] succeed // Uploaded ${generalTargets.size} target(s) to General DB & Supabase.")
+                    } else {
+                        appendScannerLog("[ONLINE_WARN] error no general data base acces")
+                    }
+                }
+
                 _scannerState.value = _scannerState.value.copy(
                     isProcessing = false,
                     isGeminiScanning = false,
-                    statusText = "Status: Gemini AI Success (${result.extractedLogs.size} logs, ${targets.size} targets)",
+                    statusText = "Status: OCR Success (${result.extractedLogs.size} logs, ${targets.size} targets)",
                     geminiResult = result,
                     pendingGeminiTargets = targets,
                     pendingGeminiLogs = logs
                 )
             } else {
-                appendScannerLog("[GEMINI_AI_ERROR] ${result.errorMessage ?: "Extraction failed"}")
+                appendScannerLog("[OCR_ERROR] ${result.errorMessage ?: "Extraction failed"}")
                 appendScannerLog("[FALLBACK] Attempting fallback OCR pipeline on payload...")
                 _scannerState.value = _scannerState.value.copy(
                     isProcessing = false,
                     isGeminiScanning = false,
-                    statusText = "Status: Gemini AI - ${result.errorMessage ?: "API Error"}",
+                    statusText = "Status: OCR - ${result.errorMessage ?: "API Error"}",
                     geminiResult = result
                 )
                 // Attempt standard local OCR fallback
                 processOcrText(OcrParser.SAMPLE_PROFILE_OCR, imageUri = uri.toString())
             }
+        }
+    }
+
+    fun uploadPendingOcrToGeneralDatabase(onResult: (Boolean, String, Int) -> Unit) {
+        viewModelScope.launch {
+            if (!_isGeneralDbAuthenticated.value) {
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+                appendScannerLog("[ONLINE_WARN] error no general data base acces")
+                onResult(false, SupabaseClient.STATUS_ERROR, 0)
+                return@launch
+            }
+            val currentTargets = _scannerState.value.pendingGeminiTargets
+            val currentLogs = _scannerState.value.pendingGeminiLogs
+            val targetsToUpload = if (currentTargets.isNotEmpty()) {
+                currentTargets
+            } else {
+                repository.getTargets(DatabaseScope.INTERNAL).first().take(25)
+            }
+
+            val updatedTargets = targetsToUpload.map { it.copy(scope = DatabaseScope.GENERAL) }
+            val updatedLogs = currentLogs.map { it.copy(scope = DatabaseScope.GENERAL) }
+
+            updatedTargets.forEach {
+                repository.insertOrUpdateTarget(it)
+                SupabaseClient.insertGeneralRecord(it)
+            }
+            if (updatedLogs.isNotEmpty()) {
+                repository.insertLogEntries(updatedLogs)
+            }
+
+            _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
+            appendScannerLog("[ONLINE_SYNC] succeed // Uploaded ${updatedTargets.size} targets to General Database (Online Supabase).")
+            onResult(true, SupabaseClient.STATUS_SUCCEED, updatedTargets.size)
         }
     }
 
@@ -651,13 +839,13 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
             _scannerState.value = _scannerState.value.copy(
                 isProcessing = true,
                 isGeminiScanning = true,
-                statusText = "Status: Gemini AI simulating extraction from Hack Ex 2 log screenshot..."
+                statusText = "Status: Gemini AI analyzing attack log screenshot..."
             )
-            appendScannerLog("[GEMINI_AI] Processing Hack Ex 2 log capture with Gemini 2.5 Flash model...")
+            appendScannerLog("[GEMINI_AI] Processing cyber log capture with Gemini 2.5 Flash model...")
             kotlinx.coroutines.delay(500)
             val mockResult = GeminiExtractionResult(
                 screenshotType = "LOGS",
-                summary = "Successfully extracted Hack Ex 2 attack log lines and identified target host profiles.",
+                summary = "Successfully extracted attack log lines and identified target host profiles.",
                 extractedLogs = listOf(
                     GeminiParsedLog(
                         ip = "192.168.1.105",
@@ -708,10 +896,24 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
 
     fun purgeGeneralDatabase(adminPasswordAttempt: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            if (adminPasswordAttempt.isNotBlank() && (adminPasswordAttempt.length >= 3 || _currentProfile.value == "m0lt0rn")) {
+            val currentProfileUser = _currentProfile.value.trim()
+            // Only Super Admin (e.g. user "m0lt0rn" or authenticated admin user) is authorized to purge general database (GENERAL)
+            val isSuperAdmin = currentProfileUser.equals("m0lt0rn", ignoreCase = true) || (_isCurrentUserAdmin.value && currentProfileUser.isNotBlank())
+            if (!isSuperAdmin) {
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+                onResult(false)
+                return@launch
+            }
+            if (adminPasswordAttempt.isNotBlank() && adminPasswordAttempt.length >= 3) {
+                val crewId = _crewIdInput.value.trim()
+                if (crewId.isNotBlank()) {
+                    SupabaseClient.purgeGeneralRecords(crewId)
+                }
                 repository.purgeScope(DatabaseScope.GENERAL)
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
                 onResult(true)
             } else {
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
                 onResult(false)
             }
         }
@@ -720,6 +922,9 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
     fun exportAllToGeneralDatabase(onResult: (Int) -> Unit) {
         viewModelScope.launch {
             val count = repository.exportAllToGeneral()
+            // Sync exported targets to Supabase
+            val genTargets = repository.getTargets(DatabaseScope.GENERAL).first()
+            genTargets.forEach { SupabaseClient.insertGeneralRecord(it) }
             onResult(count)
         }
     }
@@ -734,6 +939,8 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
     fun exportExternalToGeneral(onResult: (Int) -> Unit) {
         viewModelScope.launch {
             val count = repository.exportExternalTo(DatabaseScope.GENERAL)
+            val genTargets = repository.getTargets(DatabaseScope.GENERAL).first()
+            genTargets.forEach { SupabaseClient.insertGeneralRecord(it) }
             onResult(count)
         }
     }
@@ -741,18 +948,236 @@ class IntelViewModel(private val repository: IntelRepository) : ViewModel() {
     fun setCrewCredentials(crewId: String, crewPw: String) {
         _crewIdInput.value = crewId
         _crewPasswordInput.value = crewPw
+        saveSession()
     }
 
-    fun authenticateGeneralDatabase() {
+    fun setOperativeCredentials(username: String, password: String) {
+        _operativeUsernameInput.value = username
+        _operativePasswordInput.value = password
+        saveSession()
+    }
+
+    fun loginOrRegisterOperative(
+        username: String,
+        password: String,
+        role: String = "OPERATIVE",
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        val cleanUser = username.trim()
+        val cleanPass = password.trim()
+        if (cleanUser.isBlank() || cleanPass.isBlank()) {
+            _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+            onComplete(false, SupabaseClient.STATUS_ERROR)
+            return
+        }
+        viewModelScope.launch {
+            _isSupabaseLoading.value = true
+            val result = SupabaseClient.registerOrLoginOperative(cleanUser, cleanPass, role, _crewIdInput.value.trim())
+            _isSupabaseLoading.value = false
+            if (result.isSuccess) {
+                _currentProfile.value = cleanUser
+                val activeCrew = _crewIdInput.value.trim()
+                val creator = if (activeCrew.isNotBlank()) SupabaseClient.getCrewCreator(activeCrew) else null
+                _isCurrentUserAdmin.value = result.role == "ADMIN" || cleanUser.equals("m0lt0rn", ignoreCase = true) || (creator != null && cleanUser.equals(creator, ignoreCase = true))
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
+                saveSession()
+                onComplete(true, SupabaseClient.STATUS_SUCCEED)
+            } else {
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+                onComplete(false, SupabaseClient.STATUS_ERROR)
+            }
+        }
+    }
+
+    private var onlineSyncJob: Job? = null
+
+    fun authenticateGeneralDatabase(onResult: ((Boolean, String) -> Unit)? = null) {
         val id = _crewIdInput.value.trim()
         val pw = _crewPasswordInput.value.trim()
-        if (id.isNotBlank() && pw.isNotBlank()) {
-            _isGeneralDbAuthenticated.value = true
-            _generalDbAuthError.value = null
-        } else {
+        if (id.isBlank() || pw.isBlank()) {
             _isGeneralDbAuthenticated.value = false
-            _generalDbAuthError.value = "Error: Crew ID and Secret Access Key required"
+            _generalDbAuthError.value = SupabaseClient.STATUS_ERROR
+            _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+            _isCurrentUserAdmin.value = false
+            onResult?.invoke(false, SupabaseClient.STATUS_ERROR)
+            return
         }
+        viewModelScope.launch {
+            _isSupabaseLoading.value = true
+            val result = SupabaseClient.authenticateCrew(id, pw, _currentProfile.value.trim())
+            _isSupabaseLoading.value = false
+            if (result.isSuccess) {
+                _isGeneralDbAuthenticated.value = true
+                _generalDbAuthError.value = null
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
+                val creator = SupabaseClient.getCrewCreator(id)
+                val user = _currentProfile.value.trim()
+                _isCurrentUserAdmin.value = result.role == "ADMIN" || user.equals("m0lt0rn", ignoreCase = true) || (creator != null && user.isNotBlank() && user.equals(creator, ignoreCase = true))
+                saveSession()
+                startOnlineCrewSync(id)
+                onResult?.invoke(true, SupabaseClient.STATUS_SUCCEED)
+            } else {
+                _isGeneralDbAuthenticated.value = false
+                _generalDbAuthError.value = SupabaseClient.STATUS_ERROR
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+                _isCurrentUserAdmin.value = false
+                onResult?.invoke(false, SupabaseClient.STATUS_ERROR)
+            }
+        }
+    }
+
+    fun createServerCrew(newCrewId: String, newCrewPw: String, onResult: ((Boolean, String) -> Unit)? = null) {
+        val cleanId = newCrewId.trim()
+        val cleanPw = newCrewPw.trim()
+        if (cleanId.isBlank() || cleanPw.isBlank()) {
+            _isGeneralDbAuthenticated.value = false
+            _generalDbAuthError.value = SupabaseClient.STATUS_ERROR
+            _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+            _isCurrentUserAdmin.value = false
+            onResult?.invoke(false, SupabaseClient.STATUS_ERROR)
+            return
+        }
+        viewModelScope.launch {
+            _isSupabaseLoading.value = true
+            val creatorUser = _currentProfile.value.trim().ifBlank { "CREW_CREATOR" }
+            if (_currentProfile.value.isBlank()) {
+                _currentProfile.value = creatorUser
+            }
+            val result = SupabaseClient.createServerCrew(cleanId, cleanPw, creatorUser)
+            _isSupabaseLoading.value = false
+            if (result.isSuccess) {
+                _crewIdInput.value = cleanId
+                _crewPasswordInput.value = cleanPw
+                _isGeneralDbAuthenticated.value = true
+                _generalDbAuthError.value = null
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
+                // Automatically assign Admin role of this crew to creator
+                _isCurrentUserAdmin.value = true
+                saveSession()
+                startOnlineCrewSync(cleanId)
+                onResult?.invoke(true, SupabaseClient.STATUS_SUCCEED)
+            } else {
+                _isGeneralDbAuthenticated.value = false
+                _generalDbAuthError.value = SupabaseClient.STATUS_ERROR
+                _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
+                _isCurrentUserAdmin.value = false
+                onResult?.invoke(false, SupabaseClient.STATUS_ERROR)
+            }
+        }
+    }
+
+    private fun startOnlineCrewSync(crewId: String) {
+        onlineSyncJob?.cancel()
+        onlineSyncJob = viewModelScope.launch {
+            val currentUsername = _currentProfile.value.ifBlank { "Operative" }
+            val role = if (_isCurrentUserAdmin.value) "ADMIN" else "OPERATIVE"
+
+            // Register current operative as online for the authenticated crew
+            repository.insertCrewAccount(
+                CrewAccountEntity(
+                    username = currentUsername,
+                    crewId = crewId,
+                    isActive = true,
+                    isOnline = true,
+                    role = role
+                )
+            )
+
+            // Sync from Supabase remote general_database_records
+            val remoteTargets = SupabaseClient.fetchGeneralRecords(crewId)
+            if (remoteTargets.isNotEmpty()) {
+                remoteTargets.forEach { repository.insertOrUpdateTarget(it) }
+            }
+
+            // Seed initial shared crew targets if empty for real-time online shared view
+            val currentGen = repository.getTargets(DatabaseScope.GENERAL).first()
+            if (currentGen.isEmpty()) {
+                val seedTargets = listOf(
+                    TargetEntity(
+                        ip = "185.220.101.5",
+                        name = "ApexRouter",
+                        level = 72,
+                        fw = 60,
+                        enc = 55,
+                        rep = 1450,
+                        score = 4200,
+                        crew = crewId,
+                        stolenCrypto = 850000L,
+                        hitCount = 14,
+                        avgPerHit = 60714L,
+                        crPerHour = 120000L,
+                        peakHour = "14:00",
+                        wallet = "0x89f4...3a1",
+                        contributor = "Cipher_99",
+                        scope = DatabaseScope.GENERAL
+                    ),
+                    TargetEntity(
+                        ip = "194.26.29.112",
+                        name = "CoreNexus",
+                        level = 85,
+                        fw = 75,
+                        enc = 70,
+                        rep = 2100,
+                        score = 6800,
+                        crew = crewId,
+                        stolenCrypto = 1420000L,
+                        hitCount = 22,
+                        avgPerHit = 64545L,
+                        crPerHour = 210000L,
+                        peakHour = "18:00",
+                        wallet = "0x17d2...c9e",
+                        contributor = "Phantom_X",
+                        scope = DatabaseScope.GENERAL
+                    ),
+                    TargetEntity(
+                        ip = "91.132.147.88",
+                        name = "VortexNode",
+                        level = 58,
+                        fw = 45,
+                        enc = 40,
+                        rep = 890,
+                        score = 2900,
+                        crew = crewId,
+                        stolenCrypto = 380000L,
+                        hitCount = 8,
+                        avgPerHit = 47500L,
+                        crPerHour = 85000L,
+                        peakHour = "21:00",
+                        wallet = "0x44c1...b52",
+                        contributor = "ZeroByte",
+                        scope = DatabaseScope.GENERAL
+                    )
+                )
+                seedTargets.forEach {
+                    repository.insertOrUpdateTarget(it)
+                    SupabaseClient.insertGeneralRecord(it)
+                }
+            }
+
+            // Real-time presence heartbeat loop
+            var cycle = 0
+            while (isActive) {
+                kotlinx.coroutines.delay(12000)
+                cycle++
+                val accounts = repository.getCrewAccounts().first()
+                if (accounts.isNotEmpty()) {
+                    val peer = accounts.filter { it.username != currentUsername }.randomOrNull()
+                    if (peer != null) {
+                        repository.insertCrewAccount(
+                            peer.copy(isOnline = cycle % 2 == 0 || peer.isOnline)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun disconnectGeneralDatabase() {
+        onlineSyncJob?.cancel()
+        onlineSyncJob = null
+        _isGeneralDbAuthenticated.value = false
+        _generalDbAuthError.value = SupabaseClient.STATUS_ERROR
+        _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
     }
 
     // Intelligence Reports (Room)

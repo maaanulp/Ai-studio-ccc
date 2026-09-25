@@ -16,6 +16,6 @@ data class IntelligenceReportEntity(
     val defenseAnalysis: String,
     val financialPayload: String,
     val recommendedVector: String,
-    val authorOperative: String = "m0lt0rn",
+    val authorOperative: String = "",
     val generatedTimestamp: Long = System.currentTimeMillis()
 )

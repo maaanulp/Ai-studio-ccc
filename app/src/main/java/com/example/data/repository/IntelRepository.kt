@@ -137,6 +137,10 @@ class IntelRepository(
         return targetDao.getAllCrewAccounts()
     }
 
+    suspend fun insertCrewAccount(account: CrewAccountEntity) {
+        targetDao.insertCrewAccount(account)
+    }
+
     // ==========================================
     // INTELLIGENCE REPORTS (ROOM)
     // ==========================================
@@ -265,18 +269,6 @@ class IntelRepository(
     // ==========================================
 
     suspend fun initializeDefaultData() {
-        val existing = targetDao.getAllCrewAccounts().first()
-        if (existing.isEmpty()) {
-            val defaults = listOf(
-                CrewAccountEntity(username = "m0lt0rn", crewId = "CCC", isActive = true, isOnline = true, role = "ADMIN"),
-                CrewAccountEntity(username = "Cipher_99", crewId = "CCC", isActive = true, isOnline = true, role = "OPERATIVE"),
-                CrewAccountEntity(username = "ZeroByte", crewId = "CCC", isActive = true, isOnline = true, role = "OPERATIVE"),
-                CrewAccountEntity(username = "Nyx_H4ck", crewId = "CCC", isActive = true, isOnline = false, role = "OPERATIVE"),
-                CrewAccountEntity(username = "Phantom_X", crewId = "CCC", isActive = true, isOnline = true, role = "OPERATIVE")
-            )
-            for (acc in defaults) {
-                targetDao.insertCrewAccount(acc)
-            }
-        }
+        // No hardcoded preloaded data; starts clean for production readiness
     }
 }

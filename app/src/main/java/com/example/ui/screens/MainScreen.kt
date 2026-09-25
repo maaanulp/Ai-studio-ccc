@@ -63,6 +63,7 @@ import com.example.ui.theme.MatrixGreenSecondary
 import com.example.ui.theme.MatrixTextMuted
 import com.example.ui.theme.MatrixTextPrimary
 import com.example.ui.theme.MatrixTextSecondary
+import com.example.ui.theme.CyberAmber
 import com.example.ui.viewmodel.AppSection
 import com.example.ui.viewmodel.IntelViewModel
 
@@ -70,15 +71,17 @@ import com.example.ui.viewmodel.IntelViewModel
 fun MainScreen(viewModel: IntelViewModel) {
     val currentSection by viewModel.currentSection.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
+    val isCurrentUserAdmin by viewModel.isCurrentUserAdmin.collectAsState()
+    val crewAccounts by viewModel.crewAccounts.collectAsState()
     val selectedTarget by viewModel.selectedTargetForDossier.collectAsState()
 
     var showProfileDropdown by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(MatrixDarkBackground)) {
-        // Animated Matrix Falling Rain in the background
+        // Animated Matrix Falling Rain in the background (subtle and non-invasive)
         MatrixRainCanvas(
             modifier = Modifier.fillMaxSize(),
-            alpha = 0.22f,
+            alpha = 0.07f,
             fontSize = 28f
         )
 
@@ -94,64 +97,83 @@ fun MainScreen(viewModel: IntelViewModel) {
                         .border(BorderStroke(1.dp, MatrixBorder))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            // Mandatory exact title from brief
+                    Text(
+                        text = "Crypt0 Cr3w Central [CCC]",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MatrixGreenPrimary
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Operative profile selector as normal description line (adapts to long usernames)
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MatrixDarkSurfaceVariant)
+                                .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
+                                .clickable { showProfileDropdown = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Active Operative Profile",
+                                tint = MatrixGreenPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Crypt0 Cr3w Central [CCC] by [m0lt0rn]",
+                                text = "OPERATIVE: ",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MatrixGreenPrimary
+                                color = MatrixTextMuted
                             )
                             Text(
-                                text = "HACK EX 2 // INTEL ENGINE v4.2",
+                                text = if (currentProfile.isNotBlank()) "[$currentProfile] ${if (isCurrentUserAdmin) "[ADMIN]" else ""}".trim() else "[Unassigned]",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (currentProfile.isNotBlank()) MatrixGreenPrimary else CyberAmber,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "▾",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
-                                color = MatrixTextMuted
+                                color = MatrixGreenPrimary
                             )
                         }
 
-                        // Solo Player Profile Switcher
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(MatrixDarkSurfaceVariant)
-                                    .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
-                                    .clickable { showProfileDropdown = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = MatrixGreenPrimary,
-                                    modifier = Modifier.size(14.dp)
+                        DropdownMenu(
+                            expanded = showProfileDropdown,
+                            onDismissRequest = { showProfileDropdown = false },
+                            modifier = Modifier
+                                .background(MatrixDarkSurface)
+                                .border(BorderStroke(1.dp, MatrixBorderBright))
+                        ) {
+                            val profileNames = crewAccounts.map { it.username }.filter { it.isNotBlank() }.distinct()
+                            if (profileNames.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "No accounts registered",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            color = MatrixTextMuted
+                                        )
+                                    },
+                                    onClick = { showProfileDropdown = false }
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "[$currentProfile]",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MatrixGreenPrimary
-                                )
-                            }
-
-                            DropdownMenu(
-                                expanded = showProfileDropdown,
-                                onDismissRequest = { showProfileDropdown = false },
-                                modifier = Modifier
-                                    .background(MatrixDarkSurface)
-                                    .border(BorderStroke(1.dp, MatrixBorderBright))
-                            ) {
-                                val profiles = listOf("m0lt0rn", "Cipher_99", "ZeroByte", "Ghost_Solo")
-                                profiles.forEach { p ->
+                            } else {
+                                profileNames.forEach { p ->
                                     DropdownMenuItem(
                                         text = {
                                             Text(
@@ -180,10 +202,10 @@ fun MainScreen(viewModel: IntelViewModel) {
                     modifier = Modifier.border(BorderStroke(1.dp, MatrixBorder))
                 ) {
                     val navItems = listOf(
-                        NavEntry(AppSection.PROCESS_LOGS, "Process Logs", Icons.Default.Terminal, "nav_process_logs"),
+                        NavEntry(AppSection.PROCESS_LOGS, "Process", Icons.Default.Terminal, "nav_process_logs"),
+                        NavEntry(AppSection.INTEL_DATABASE, "Intel DB", Icons.Default.Storage, "nav_intel_db"),
                         NavEntry(AppSection.SCREENSHOT_SCANNER, "Scanner", Icons.Default.CropFree, "nav_scanner"),
-                        NavEntry(AppSection.OPERATIONAL_METRICS, "Metrics", Icons.Default.Analytics, "nav_metrics"),
-                        NavEntry(AppSection.INTEL_DATABASE, "Intel DB", Icons.Default.Storage, "nav_intel_db")
+                        NavEntry(AppSection.OPERATIONAL_METRICS, "Metrics", Icons.Default.Analytics, "nav_metrics")
                     )
 
                     navItems.forEach { item ->

@@ -83,15 +83,23 @@ fun ScreenshotScannerScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.scannerState.collectAsState()
+    val crewId by viewModel.crewIdInput.collectAsState()
+    val syncOcrToGeneralOnline by viewModel.syncOcrToGeneralOnline.collectAsState()
+    val ocrTargetScope by viewModel.ocrTargetScope.collectAsState()
+    val isGeneralAuth by viewModel.isGeneralDbAuthenticated.collectAsState()
     val context = LocalContext.current
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            // Process picked image with Gemini Vision AI
-            viewModel.processScreenshotWithGemini(context, uri)
-            Toast.makeText(context, "Processing screenshot with Gemini 2.5 Flash AI...", Toast.LENGTH_SHORT).show()
+    val multiplePhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.processScreenshots(
+                context = context,
+                uris = uris,
+                targetScope = ocrTargetScope,
+                alsoUploadToGeneral = syncOcrToGeneralOnline
+            )
+            Toast.makeText(context, "Ingesting ${uris.size} screenshot(s)...", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -102,7 +110,7 @@ fun ScreenshotScannerScreen(
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Text(
-            text = "SECTION 02 // GEMINI AI & OCR LOG SCANNER",
+            text = "Parse IPs, account names and installed software",
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             color = MatrixGreenDim,
@@ -155,153 +163,75 @@ fun ScreenshotScannerScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Upload Screenshot Main / Apps Box & Dropzone
+        // Upload Screenshot Container (Multi-image enabled, no icon, no test buttons)
         TerminalContainer(
             title = "INGESTION: SCREENSHOT PAYLOAD",
-            trailingBadge = "GEMINI 2.5 FLASH"
+            trailingBadge = "OCR ENGINE"
         ) {
             Column {
-                // Main Button: "Upload Screenshot Main/Apps" with Gemini Vision AI
-                Box(
+                HackerButton(
+                    text = "Upload data",
+                    onClick = {
+                        multiplePhotoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    testTag = "upload_screenshot_btn"
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "> Parse IPs, account names and installed software.",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = MatrixTextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Destination Option: Internal DB vs Online General DB Upload
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(4.dp))
                         .background(MatrixDarkSurfaceVariant)
-                        .border(BorderStroke(1.5.dp, MatrixGreenPrimary), RoundedCornerShape(4.dp))
-                        .clickable {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        }
-                        .padding(14.dp)
-                        .testTag("upload_screenshot_btn"),
-                    contentAlignment = Alignment.Center
+                        .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Upload Screenshot",
-                            tint = MatrixGreenPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Upload Screenshot (Gemini AI Vision)",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MatrixGreenPrimary
-                            )
-                            Text(
-                                text = "Extracts Hack Ex 2 logs, targets & formats for DB storage",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                color = MatrixGreenDim
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Drag/Tap Dropzone Box
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF020703))
-                        .border(
-                            BorderStroke(1.dp, MatrixBorderBright),
-                            RoundedCornerShape(4.dp)
-                        )
-                        .clickable {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        }
-                        .padding(vertical = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.UploadFile,
-                            contentDescription = null,
-                            tint = MatrixGreenSecondary,
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "tap here / drag screenshot payload",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = MatrixGreenSecondary
-                        )
-                        Text(
-                            text = "Gemini Vision AI parses logs, accounts, IP addresses & financial data",
+                            text = "INDEX REPOSITORY: INTERNAL DATABASE (PRIVATE)",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
-                            color = MatrixTextMuted
+                            fontWeight = FontWeight.Bold,
+                            color = MatrixGreenPrimary
+                        )
+                        Text(
+                            text = if (syncOcrToGeneralOnline)
+                                "> ONLINE SYNC: Upload to General DB enabled [Supabase Crew]"
+                            else
+                                "> ONLINE SYNC: OFF (Indexed to solo private internal archive)",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            color = if (syncOcrToGeneralOnline) MatrixGreenGlow else MatrixTextMuted
                         )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // "or paste an image from clipboard"
-                HackerButton(
-                    text = "or paste text / image from clipboard",
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = clipboard.primaryClip
-                        if (clip != null && clip.itemCount > 0) {
-                            val text = clip.getItemAt(0).text?.toString() ?: ""
-                            if (text.isNotBlank()) {
-                                viewModel.processOcrText(text)
-                                Toast.makeText(context, "Processing clipboard payload...", Toast.LENGTH_SHORT).show()
-                            } else {
-                                viewModel.loadSampleProfileOcr()
-                                Toast.makeText(context, "Processed clipboard stream", Toast.LENGTH_SHORT).show()
-                            }
-                        } else {
-                            viewModel.loadSampleProfileOcr()
-                            Toast.makeText(context, "Loaded simulated clipboard screenshot", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "paste_clipboard_btn"
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Quick Action Presets
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
                     HackerButton(
-                        text = "[TEST GEMINI LOGS]",
-                        onClick = {
-                            viewModel.loadGeminiDemoLogExtraction()
-                            Toast.makeText(context, "Executing Gemini 2.5 Flash log extraction demo...", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1.3f)
-                    )
-                    HackerButton(
-                        text = "[PROFILE OCR]",
-                        onClick = { viewModel.loadSampleProfileOcr() },
-                        modifier = Modifier.weight(1f)
-                    )
-                    HackerButton(
-                        text = "[APPS OCR]",
-                        onClick = { viewModel.loadSampleAppsOcr() },
-                        modifier = Modifier.weight(1f)
+                        text = if (syncOcrToGeneralOnline) "[SYNC ONLINE: ON]" else "[SYNC ONLINE: OFF]",
+                        onClick = { viewModel.setSyncOcrToGeneralOnline(!syncOcrToGeneralOnline) },
+                        testTag = "toggle_sync_general_btn"
                     )
                 }
             }
         }
 
-        // Gemini AI Extraction Summary Card
+        // OCR Extraction Summary Card
         state.geminiResult?.let { gemini ->
             Spacer(modifier = Modifier.height(12.dp))
             GeminiExtractionSummaryCard(
@@ -310,12 +240,12 @@ fun ScreenshotScannerScreen(
                 pendingLogsCount = state.pendingGeminiLogs.size,
                 onExportInternal = {
                     viewModel.exportGeminiPendingToScope(DatabaseScope.INTERNAL) {
-                        Toast.makeText(context, "Exported $it targets to Internal DB", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Indexed $it target(s) to Internal DB", Toast.LENGTH_SHORT).show()
                     }
                 },
-                onExportExternal = {
-                    viewModel.exportGeminiPendingToScope(DatabaseScope.EXTERNAL) {
-                        Toast.makeText(context, "Exported $it targets to External DB", Toast.LENGTH_SHORT).show()
+                onUploadOnlineGeneral = {
+                    viewModel.uploadPendingOcrToGeneralDatabase { success, message, count ->
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
                 }
             )
@@ -323,7 +253,7 @@ fun ScreenshotScannerScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Non-editable Terminal with real-time processing data
+        // Non-editable Terminal with real-time processing data (minimized to 1 line, expandable, root@crew_name)
         Text(
             text = "REAL-TIME OCR TERMINAL LOGS",
             fontFamily = FontFamily.Monospace,
@@ -334,6 +264,7 @@ fun ScreenshotScannerScreen(
         Spacer(modifier = Modifier.height(4.dp))
         TerminalLogConsole(
             logs = state.terminalLogs,
+            crewName = crewId,
             maxHeight = 150
         )
 
@@ -442,103 +373,6 @@ fun ScreenshotScannerScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-        var showRoomOcrAudit by remember { mutableStateOf(true) }
-        val recentOcrResults by viewModel.recentOcrResults.collectAsState()
-
-        TerminalContainer(
-            title = "ROOM DATABASE OCR TEXT ARCHIVE (${recentOcrResults.size})",
-            trailingBadge = "EXTRACTED"
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (showRoomOcrAudit) "▲ COLLAPSE OCR ARCHIVE" else "▼ VIEW OCR ARCHIVE (${recentOcrResults.size})",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        color = MatrixGreenDim,
-                        modifier = Modifier.clickable { showRoomOcrAudit = !showRoomOcrAudit }
-                    )
-                    if (recentOcrResults.isNotEmpty()) {
-                        Text(
-                            text = "[PURGE OCR (ROOM)]",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PurgeRed,
-                            modifier = Modifier.clickable { viewModel.purgeOcrResults() }
-                        )
-                    }
-                }
-
-                if (showRoomOcrAudit) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (recentOcrResults.isEmpty()) {
-                        Text(
-                            text = "No OCR results persisted in Room yet. Run an OCR scan or export manual intel to index results in Room.",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            color = MatrixTextSecondary
-                        )
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            recentOcrResults.take(10).forEach { item ->
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(MatrixDarkSurfaceVariant)
-                                        .border(BorderStroke(0.5.dp, MatrixBorder), RoundedCornerShape(3.dp))
-                                        .padding(8.dp)
-                                ) {
-                                    Column {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = "[${item.scanType}] ${item.detectedAccountName ?: item.detectedIp ?: "Unknown Target"}",
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MatrixGreenGlow
-                                            )
-                                            Text(
-                                                text = "Conf: ${(item.confidenceScore * 100).toInt()}%",
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 10.sp,
-                                                color = MatrixGreenDim
-                                            )
-                                        }
-                                        if (item.detectedIp != null) {
-                                            Text(
-                                                text = "IP: ${item.detectedIp} | LVL: ${item.detectedLevel ?: "--"} | FW: ${item.detectedFw ?: "--"} | ENC: ${item.detectedEncr ?: "--"}",
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 10.sp,
-                                                color = MatrixTextSecondary
-                                            )
-                                        }
-                                        if (item.detectedAppsSummary != null) {
-                                            Text(
-                                                text = "Apps: ${item.detectedAppsSummary}",
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 10.sp,
-                                                color = MatrixTextMuted
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
@@ -594,10 +428,10 @@ private fun GeminiExtractionSummaryCard(
     pendingTargetsCount: Int,
     pendingLogsCount: Int,
     onExportInternal: () -> Unit,
-    onExportExternal: () -> Unit
+    onUploadOnlineGeneral: () -> Unit
 ) {
     TerminalContainer(
-        title = "GEMINI 2.5 FLASH // LOG EXTRACTION SUMMARY",
+        title = "OCR LOG EXTRACTION SUMMARY",
         trailingBadge = if (result.isSuccess) "FORMATTED FOR DB" else "EXTRACTION FAILED"
     ) {
         Column(
@@ -675,7 +509,7 @@ private fun GeminiExtractionSummaryCard(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "IDENTIFIED TARGET: ${target.ip}",
+                                text = "IDENTIFIED TARGET: ${target.ip ?: "Pending IP"}",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
@@ -692,7 +526,7 @@ private fun GeminiExtractionSummaryCard(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "LVL: ${target.level ?: "--"} | FW: ${target.fw ?: "--"} | ENC: ${target.enc ?: "--"} | REP: ${target.rep ?: "--"}",
+                            text = "LVL: ${target.level} | FW: ${target.fw} | ENC: ${target.enc} | REP: ${target.rep} | SCORE: ${target.score}",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             color = MatrixTextSecondary
@@ -704,6 +538,75 @@ private fun GeminiExtractionSummaryCard(
                                 fontSize = 10.sp,
                                 color = MatrixGreenDim
                             )
+                        }
+
+                        // Software Apps Grid (if present)
+                        if (target.appsParsed || target.antivirusLvl > 0 || target.firewallAppLvl > 0 || target.passwordCrackerLvl > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "PARSED SOFTWARE MATRIX (11 APPS):",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MatrixGreenDim
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val appList = listOf(
+                                "AV" to target.antivirusLvl,
+                                "SPAM" to target.spamLvl,
+                                "ROOTKIT" to target.rootkitLvl,
+                                "FW" to target.firewallAppLvl,
+                                "BYPASS" to target.bypasserLvl,
+                                "CRACKER" to target.passwordCrackerLvl,
+                                "ENCRYPT" to target.passwordEncryptorLvl,
+                                "PROXY" to target.proxyLvl,
+                                "TRACE" to target.traceLvl,
+                                "KEYGEN" to target.keygenLvl,
+                                "SIPHON" to target.siphonLvl
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                for ((app, lvl) in appList.take(6)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MatrixDarkBackground)
+                                            .border(BorderStroke(0.5.dp, MatrixBorder), RoundedCornerShape(2.dp))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "$app:$lvl",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 9.sp,
+                                            color = if (lvl > 0) MatrixGreenPrimary else MatrixTextMuted
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                for ((app, lvl) in appList.drop(6)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MatrixDarkBackground)
+                                            .border(BorderStroke(0.5.dp, MatrixBorder), RoundedCornerShape(2.dp))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "$app:$lvl",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 9.sp,
+                                            color = if (lvl > 0) MatrixGreenPrimary else MatrixTextMuted
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -759,22 +662,22 @@ private fun GeminiExtractionSummaryCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Export to DB Buttons
+            // Export to DB Buttons: Internal DB vs Online General DB Upload
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 HackerButton(
-                    text = "[EXPORT TO INTERNAL DB]",
+                    text = "[INDEX TO INTERNAL DB]",
                     onClick = onExportInternal,
                     modifier = Modifier.weight(1f),
                     testTag = "gemini_export_internal_btn"
                 )
                 HackerButton(
-                    text = "[EXPORT TO EXTERNAL DB]",
-                    onClick = onExportExternal,
+                    text = "[UPLOAD ONLINE TO GENERAL DB]",
+                    onClick = onUploadOnlineGeneral,
                     modifier = Modifier.weight(1f),
-                    testTag = "gemini_export_external_btn"
+                    testTag = "gemini_upload_general_btn"
                 )
             }
         }

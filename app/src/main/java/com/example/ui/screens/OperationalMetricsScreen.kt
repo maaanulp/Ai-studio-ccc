@@ -94,7 +94,7 @@ fun OperationalMetricsScreen(
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Text(
-            text = "SECTION 03 // OPERATIONAL METRICS & CREW TELEMETRY",
+            text = "OPERATIONAL METRICS & CREW TELEMETRY",
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             color = MatrixGreenDim,
@@ -218,8 +218,7 @@ private fun CrewContributorsList(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (acc in crewAccounts) {
             val userTargets = allTargets.filter {
-                it.contributor.equals(acc.username, ignoreCase = true) ||
-                (acc.username == "m0lt0rn" && it.contributor.isBlank())
+                it.contributor.equals(acc.username, ignoreCase = true)
             }
             val isExpanded = expandedContributor == acc.username
 

@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MatrixBorder
@@ -52,6 +53,7 @@ import com.example.ui.theme.MatrixDarkBackground
 import com.example.ui.theme.MatrixDarkSurface
 import com.example.ui.theme.MatrixDarkSurfaceVariant
 import com.example.ui.theme.MatrixGreenDim
+import com.example.ui.theme.MatrixGreenGlow
 import com.example.ui.theme.MatrixGreenPrimary
 import com.example.ui.theme.MatrixTextMuted
 import com.example.ui.theme.MatrixTextPrimary
@@ -65,6 +67,7 @@ import com.example.ui.theme.PurgeRedText
 fun TerminalContainer(
     title: String,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     trailingBadge: String? = null,
     borderColor: Color = MatrixBorder,
     content: @Composable () -> Unit
@@ -77,36 +80,57 @@ fun TerminalContainer(
             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(6.dp))
     ) {
         // Terminal Window Header Bar
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MatrixDarkSurfaceVariant)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(MatrixGreenPrimary)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "> $title",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MatrixGreenPrimary
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MatrixGreenPrimary)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "> $title",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MatrixGreenPrimary
+                    )
+                }
+                if (trailingBadge != null) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "[$trailingBadge]",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        color = MatrixTextSecondary,
+                        maxLines = 1
+                    )
+                }
             }
-            if (trailingBadge != null) {
+
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "[$trailingBadge]",
+                    text = "[$subtitle]",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = MatrixTextSecondary
+                    fontWeight = FontWeight.Bold,
+                    color = MatrixGreenDim,
+                    modifier = Modifier.padding(start = 14.dp)
                 )
             }
         }
@@ -254,8 +278,11 @@ fun RedPurgeButton(
 fun TerminalLogConsole(
     logs: List<String>,
     modifier: Modifier = Modifier,
-    maxHeight: Int = 160
+    crewName: String = "ccc-terminal",
+    maxHeight: Int = 160,
+    initiallyExpanded: Boolean = false
 ) {
+    var isExpanded by remember { mutableStateOf(initiallyExpanded) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(logs.size) {
@@ -264,64 +291,104 @@ fun TerminalLogConsole(
         }
     }
 
+    val promptHost = if (crewName.isNotBlank()) crewName.lowercase().trim() else "ccc-terminal"
+    val latestLog = logs.lastOrNull() ?: "[SYS] Ready for input stream. Awaiting screenshot payload..."
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
             .background(Color(0xFF020703))
             .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
-            .padding(8.dp)
+            .clickable { isExpanded = !isExpanded }
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Row(
+                modifier = Modifier.weight(1f, fill = false),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "root@$promptHost:~$ ",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MatrixGreenPrimary
+                )
+                if (!isExpanded) {
+                    Text(
+                        text = latestLog,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        color = if (latestLog.contains("ERROR", true) || latestLog.contains("FAIL", true)) {
+                            PurgeRed
+                        } else if (latestLog.contains("SUCCESS", true) || latestLog.contains("EXTRACT", true)) {
+                            MatrixGreenGlow
+                        } else {
+                            MatrixTextSecondary
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
             Text(
-                text = "root@ccc-terminal:~$",
+                text = if (isExpanded) "[COLLAPSE ▴]" else "[EXPAND ▾]",
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
                 color = MatrixGreenDim
-            )
-            Text(
-                text = "STATUS: ${if (logs.isEmpty()) "IDLE" else "ACTIVE"}",
-                fontFamily = FontFamily.Monospace,
-                fontSize = 10.sp,
-                color = MatrixGreenPrimary
             )
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        AnimatedVisibility(visible = isExpanded) {
+            Column(modifier = Modifier.padding(top = 6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MatrixBorder)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(maxHeight.dp)
-        ) {
-            if (logs.isEmpty()) {
-                item {
-                    Text(
-                        text = "[SYS] Ready for input stream. Awaiting logs or screenshot payload...",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        color = MatrixTextMuted
-                    )
-                }
-            } else {
-                items(logs) { log ->
-                    Text(
-                        text = log,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        color = if (log.contains("ERROR", true) || log.contains("FAIL", true)) {
-                            PurgeRed
-                        } else if (log.contains("SUCCESS", true) || log.contains("EXTRACT", true)) {
-                            MatrixGreenPrimary
-                        } else {
-                            MatrixTextSecondary
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(maxHeight.dp)
+                ) {
+                    if (logs.isEmpty()) {
+                        item {
+                            Text(
+                                text = "[SYS] Ready for input stream. Awaiting screenshot payload...",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = MatrixTextMuted
+                            )
                         }
-                    )
+                    } else {
+                        items(logs) { log ->
+                            Text(
+                                text = log,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = if (log.contains("ERROR", true) || log.contains("FAIL", true)) {
+                                    PurgeRed
+                                } else if (log.contains("SUCCESS", true) || log.contains("EXTRACT", true)) {
+                                    MatrixGreenPrimary
+                                } else {
+                                    MatrixTextSecondary
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }

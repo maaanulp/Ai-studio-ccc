@@ -26,7 +26,7 @@ class RoomEntitiesTest {
             recommendedVector = "Deploy High-tier Bypasser against FW: 65, followed by Password Decryptor.",
             executiveSummary = "High-priority node under crew ShadowOps control.",
             scope = DatabaseScope.INTERNAL,
-            authorOperative = "m0lt0rn",
+            authorOperative = "CyberOperative",
             generatedTimestamp = 1695484800000L
         )
 
@@ -34,7 +34,7 @@ class RoomEntitiesTest {
         assertEquals("Target Alpha", report.targetName)
         assertEquals("CRITICAL", report.threatLevel)
         assertEquals(DatabaseScope.INTERNAL, report.scope)
-        assertEquals("m0lt0rn", report.authorOperative)
+        assertEquals("CyberOperative", report.authorOperative)
         assertTrue(report.defenseAnalysis.contains("FW: 65"))
     }
 
@@ -49,7 +49,7 @@ class RoomEntitiesTest {
             parsedAmount = 45000L,
             eventTimestamp = "2026-09-23 15:30:00",
             scope = DatabaseScope.INTERNAL,
-            contributor = "m0lt0rn"
+            contributor = "CyberOperative"
         )
 
         assertEquals("INPUT", log.logType)
@@ -91,7 +91,7 @@ class RoomEntitiesTest {
             enc = 40,
             wallet = "0x123...456",
             scope = DatabaseScope.INTERNAL,
-            contributor = "m0lt0rn"
+            contributor = "CyberOperative"
         )
 
         assertNotNull(target)

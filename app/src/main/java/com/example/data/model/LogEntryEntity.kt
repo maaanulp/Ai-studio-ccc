@@ -13,6 +13,6 @@ data class LogEntryEntity(
     val parsedAmount: Long? = null,
     val eventTimestamp: String? = null,
     val scope: DatabaseScope = DatabaseScope.INTERNAL,
-    val contributor: String = "m0lt0rn",
+    val contributor: String = "",
     val ingestedAt: Long = System.currentTimeMillis()
 )
