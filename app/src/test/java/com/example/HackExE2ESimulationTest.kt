@@ -191,4 +191,35 @@ class HackExE2ESimulationTest {
         assertTrue("Log de parseo debe coincidir", parseResult.summary.contains(parserLog))
         assertTrue("Log de sync contiene información del push", syncLog.contains("CYBER_NET_X") && syncLog.contains("3 new targets"))
     }
+
+    @Test
+    fun `test ocr engine local fallback and parseLocalExtractedText`() {
+        val simulatedOcrText = """
+            [9-23 8:08] Accessed device at 111.98.13.146
+            [9-23 8:08] Stole 485 Crypto from hx51f3...933d
+            [9-23 8:08] Accessed device at 129.101.254.235
+            [9-23 8:07] Stole 259 Crypto from hxfa9c...ce4b
+            Target Node: 10.76.96.9
+            Level: 45
+            FW: 30
+            ENC: 25
+            Rep: 450
+            Antivirus v20
+            Firewall v30
+        """.trimIndent()
+
+        val result = com.example.service.GeminiLogExtractionService.parseLocalExtractedText(simulatedOcrText)
+        assertTrue(result.isSuccess)
+        assertEquals("ML_KIT_LOCAL", result.usedEngine)
+        assertTrue(result.extractedLogs.isNotEmpty())
+        val (targets, logs) = com.example.service.GeminiLogExtractionService.formatForDatabaseStorage(
+            result,
+            DatabaseScope.INTERNAL,
+            "CyberGhost_88"
+        )
+        assertTrue("Should produce targets from OCR", targets.isNotEmpty())
+        assertTrue("Should produce logs from OCR", logs.isNotEmpty())
+        val foundTarget = targets.find { it.ip == "111.98.13.146" || it.ip == "10.76.96.9" }
+        assertNotNull("Target should be extracted", foundTarget)
+    }
 }

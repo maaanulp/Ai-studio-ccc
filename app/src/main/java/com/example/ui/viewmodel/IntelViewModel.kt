@@ -885,7 +885,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
                     totalTargets += targets.size
                     totalLogs += logs.size
-                    appendScannerLog("[NEURAL_VISION] Image ${index + 1} processed: +${targets.size} targets, +${logs.size} logs.")
+                    appendScannerLog("[NEURAL_VISION] Image ${index + 1} processed via [${result.usedEngine}]: +${targets.size} targets, +${logs.size} logs.")
                 } else {
                     appendScannerLog("[WARN] Image ${index + 1} extraction low confidence: ${result.errorMessage ?: "Skipped"}")
                 }
@@ -920,7 +920,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             val result = GeminiLogExtractionService.processImageUri(context, uri)
 
             if (result.isSuccess) {
-                appendScannerLog("[OCR_PARSER_SUCCESS] Detection: ${result.screenshotType}")
+                appendScannerLog("[OCR_PARSER_SUCCESS] Engine: [${result.usedEngine}] Detection: ${result.screenshotType}")
                 appendScannerLog("[OCR_SUMMARY] ${result.summary}")
                 appendScannerLog("[NEURAL_VISION] Extracted ${result.extractedLogs.size} logs, target: ${result.extractedTarget?.ip ?: "N/A"}")
 
@@ -1322,16 +1322,40 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
         _currentProfile.value = cleanName
         saveSession()
-        appendScannerLog("[OPERATOR_AUTH] Personal operative session active as '$cleanName'")
-        onResult?.invoke(true, "SUCCESS // Operative session set: $cleanName")
+        viewModelScope.launch {
+            val role = if (_isCurrentUserAdmin.value) "ADMIN" else "OPERATIVE"
+            SupabaseClient.syncOperativeProfile(cleanName, role, _crewIdInput.value)
+            repository.insertCrewAccount(
+                CrewAccountEntity(
+                    username = cleanName,
+                    crewId = _crewIdInput.value.ifBlank { "ALPHA" },
+                    isActive = true,
+                    isOnline = true,
+                    role = role
+                )
+            )
+            appendScannerLog("[OPERATOR_AUTH] Operative identity configured & synced as '$cleanName'")
+            onResult?.invoke(true, "SUCCESS // Operative session set: $cleanName")
+        }
     }
 
-    fun authenticateOAuth(provider: String, targetOperative: String = "CyberGhost_88", onResult: ((Boolean, String) -> Unit)? = null) {
+    fun authenticateOAuth(provider: String, targetOperative: String = "", onResult: ((Boolean, String) -> Unit)? = null) {
         viewModelScope.launch {
             _isSupabaseLoading.value = true
-            val providerTag = targetOperative.ifBlank { "CyberGhost_88" }
+            val providerTag = targetOperative.trim().ifBlank { "Operative_${System.currentTimeMillis() % 1000}" }
             _currentProfile.value = providerTag
             saveSession()
+            val role = if (_isCurrentUserAdmin.value) "ADMIN" else "OPERATIVE"
+            SupabaseClient.syncOperativeProfile(providerTag, role, _crewIdInput.value)
+            repository.insertCrewAccount(
+                CrewAccountEntity(
+                    username = providerTag,
+                    crewId = _crewIdInput.value.ifBlank { "ALPHA" },
+                    isActive = true,
+                    isOnline = true,
+                    role = role
+                )
+            )
             _isSupabaseLoading.value = false
             appendScannerLog("[OPERATOR_AUTH] Quick OAuth login via $provider succeeded as '$providerTag'")
             onResult?.invoke(true, "SUCCESS // Operative session set: $providerTag")

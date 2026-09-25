@@ -37,13 +37,52 @@ object SupabaseClient {
         "CYBER_NET_X" to "CrewPass2026"
     )
     private val localCrewCreators = mutableMapOf<String, String>(
-        "ALPHA" to "Admin_Alpha",
-        "CYBER_NET_X" to "CyberGhost_88"
+        "ALPHA" to "Admin_Alpha"
     )
     private val localOperatives = mutableMapOf<String, Pair<String, String>>()
 
     fun getCrewCreator(crewId: String): String? = localCrewCreators[crewId]
     fun getLocalOperatives(): Map<String, Pair<String, String>> = localOperatives.toMap()
+
+    /**
+     * Upsert / Sync operative profile into Supabase `profiles` or `users` table.
+     */
+    suspend fun syncOperativeProfile(
+        operativeHandle: String,
+        role: String = "OPERATIVE",
+        crewId: String = ""
+    ): Boolean = withContext(Dispatchers.IO) {
+        val handle = operativeHandle.trim()
+        if (handle.isBlank()) return@withContext false
+
+        localOperatives[handle] = Pair(role, crewId)
+
+        if (!isRemoteConfigured()) return@withContext true
+
+        try {
+            val url = "$activeSupabaseUrl/rest/v1/profiles"
+            val payload = JSONObject().apply {
+                put("username", handle)
+                put("role", role)
+                put("crew_id", crewId)
+                put("updated_at", System.currentTimeMillis())
+            }
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", activeAnonKey)
+                .addHeader("Authorization", "Bearer $activeAnonKey")
+                .addHeader("Prefer", "resolution=merge-duplicates")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Sync profile remote attempt failed, local profile active: ${e.message}")
+            true
+        }
+    }
 
     // Base URL & Anon Key from BuildConfig (via .env/Secrets plugin) or runtime overrides
     var activeSupabaseUrl: String = try {

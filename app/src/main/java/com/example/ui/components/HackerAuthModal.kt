@@ -48,6 +48,7 @@ fun HackerAuthModal(
     val currentProfile by viewModel.currentProfile.collectAsState()
     var operativeInput by remember { mutableStateOf(currentProfile) }
     var passcode by remember { mutableStateOf("") }
+    var inputError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -59,16 +60,16 @@ fun HackerAuthModal(
         title = {
             Column {
                 Text(
-                    text = "> OPERATOR AUTHENTICATOR",
+                    text = "> OPERATIVE IDENTITY & PROFILE SETUP",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = MatrixGreenPrimary
                 )
                 Text(
-                    text = "Authenticate personal operative identity",
+                    text = "Configure custom operative handle for telemetry, OCR & crew attribution",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
+                    fontSize = 9.sp,
                     color = MatrixTextMuted
                 )
             }
@@ -78,7 +79,72 @@ fun HackerAuthModal(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Section 1: Quick OAuth Sign-In
+                // Section 1: Operative Handle input
+                Text(
+                    text = "ENTER OPERATIVE HANDLE:",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MatrixGreenPrimary
+                )
+
+                OutlinedTextField(
+                    value = operativeInput,
+                    onValueChange = {
+                        operativeInput = it
+                        if (it.isNotBlank()) inputError = null
+                    },
+                    placeholder = {
+                        Text(
+                            "e.g. Viper_Null, Shadow_01, CyberGhost_88",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            color = MatrixTextMuted
+                        )
+                    },
+                    singleLine = true,
+                    isError = inputError != null,
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixGreenPrimary),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MatrixDarkBackground,
+                        unfocusedContainerColor = MatrixDarkBackground,
+                        focusedBorderColor = MatrixGreenPrimary,
+                        unfocusedBorderColor = MatrixBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("operative_handle_input")
+                )
+
+                inputError?.let { err ->
+                    Text(
+                        text = "[!] $err",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        color = CyberAmber
+                    )
+                }
+
+                // Quick presets
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("Viper_Null", "Shadow_01", "Ghost_Sec").forEach { preset ->
+                        HackerButton(
+                            text = preset,
+                            onClick = {
+                                operativeInput = preset
+                                inputError = null
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Section 2: Quick OAuth Sign-In
                 Text(
                     text = "[QUICK OAUTH ACCESS]",
                     fontFamily = FontFamily.Monospace,
@@ -86,11 +152,16 @@ fun HackerAuthModal(
                     fontWeight = FontWeight.Bold,
                     color = CyberAmber
                 )
+
                 HackerButton(
-                    text = "[G] GOOGLE OAUTH",
+                    text = "[G] SIGN IN WITH GOOGLE OAUTH",
                     onClick = {
-                        val operativeAlias = operativeInput.trim().ifBlank { "CyberGhost_88" }
-                        viewModel.authenticateOAuth("Google", operativeAlias) { _, msg ->
+                        val handle = operativeInput.trim()
+                        if (handle.isBlank()) {
+                            inputError = "Please enter an Operative Handle first."
+                            return@HackerButton
+                        }
+                        viewModel.authenticateOAuth("Google", handle) { _, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             onDismiss()
                         }
@@ -102,26 +173,10 @@ fun HackerAuthModal(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = "───────── LOCAL OPERATIVE IDENTITY ─────────",
+                    text = "───────── LOCAL IDENTITY & PASSCODE ─────────",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
+                    fontSize = 8.sp,
                     color = MatrixTextMuted
-                )
-
-                OutlinedTextField(
-                    value = operativeInput,
-                    onValueChange = { operativeInput = it },
-                    label = { Text("OPERATIVE USERNAME / ALIAS", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
-                    placeholder = { Text("Shadow_Operative", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
-                    singleLine = true,
-                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MatrixDarkBackground,
-                        unfocusedContainerColor = MatrixDarkBackground,
-                        focusedBorderColor = MatrixGreenPrimary,
-                        unfocusedBorderColor = MatrixBorder
-                    ),
-                    modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
@@ -141,24 +196,27 @@ fun HackerAuthModal(
                 )
 
                 HackerButton(
-                    text = "[LOG IN OPERATIVE SESSION]",
+                    text = "[ESTABLISH OPERATIVE IDENTITY]",
                     onClick = {
-                        viewModel.loginOperativeLocal(operativeInput, passcode) { success, msg ->
+                        val handle = operativeInput.trim()
+                        if (handle.isBlank()) {
+                            inputError = "Operative Handle cannot be empty."
+                            return@HackerButton
+                        }
+                        viewModel.loginOperativeLocal(handle, passcode) { _, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            if (success) onDismiss()
+                            onDismiss()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    testTag = "login_operative_btn"
+                    testTag = "login_operative_local_btn"
                 )
             }
         },
-        confirmButton = {},
-        dismissButton = {
+        confirmButton = {
             HackerButton(
-                text = "[CLOSE]",
-                onClick = onDismiss,
-                testTag = "modal_close_btn"
+                text = "DISMISS",
+                onClick = onDismiss
             )
         }
     )

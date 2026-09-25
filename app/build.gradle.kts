@@ -101,6 +101,7 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
+  implementation(libs.mlkit.text.recognition)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
 

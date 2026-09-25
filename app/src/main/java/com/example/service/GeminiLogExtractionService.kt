@@ -8,9 +8,13 @@ import android.util.Base64
 import com.example.BuildConfig
 import com.example.data.model.DatabaseScope
 import com.example.data.model.LogEntryEntity
-import com.example.data.model.RaidLogEntity
 import com.example.data.model.TargetEntity
+import com.example.parser.LogParser
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -20,18 +24,20 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
+import kotlin.coroutines.resume
 
 data class GeminiParsedLog(
     val ip: String,
-    val wallet: String?,
-    val stolenAmount: Long,
-    val timestampStr: String,
-    val logType: String // "INPUT" or "OUTPUT"
+    val wallet: String? = null,
+    val stolenAmount: Long = 0L,
+    val timestampStr: String = "",
+    val logType: String = "INPUT"
 )
 
 data class GeminiParsedTarget(
-    val ip: String?,
-    val name: String?,
+    val ip: String? = null,
+    val name: String? = null,
     val level: Int = 1,
     val fw: Int = 0,
     val enc: Int = 0,
@@ -61,51 +67,65 @@ data class GeminiExtractionResult(
     val extractedTarget: GeminiParsedTarget?,
     val rawExtractedText: String,
     val isSuccess: Boolean,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val usedEngine: String = "GEMINI_API" // "gemini-2.5-flash", "gemini-1.5-flash", "ML_KIT_LOCAL", etc.
 )
 
 object GeminiLogExtractionService {
 
-    private const val MODEL_NAME = "gemini-2.5-flash"
-    private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL_NAME:generateContent"
+    // Models prioritized in requested order, with cascading fallbacks to eliminate 404s
+    private val CANDIDATE_MODELS = listOf(
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-flash-latest",
+        "gemini-3.5-flash",
+        "gemini-3.0-flash"
+    )
 
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(45, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
         .build()
 
     /**
-     * Checks if the Gemini API key is configured.
+     * Checks if a valid Gemini API key is configured in environment or BuildConfig.
      */
     fun hasValidApiKey(): Boolean {
         val key = getApiKey()
         return key.isNotBlank() && key != "MY_GEMINI_API_KEY"
     }
 
+    /**
+     * Retrieves the Gemini API key from environment variable or BuildConfig.
+     */
     fun getApiKey(): String {
         return try {
-            BuildConfig.GEMINI_API_KEY
-        } catch (_: Exception) {
+            val envKey = System.getenv("GEMINI_API_KEY") ?: ""
+            if (envKey.isNotBlank() && envKey != "MY_GEMINI_API_KEY") {
+                return envKey
+            }
+            val buildConfigKey = BuildConfig.GEMINI_API_KEY
+            if (buildConfigKey.isNotBlank() && buildConfigKey != "MY_GEMINI_API_KEY") {
+                return buildConfigKey
+            }
             ""
+        } catch (_: Exception) {
+            try {
+                System.getenv("GEMINI_API_KEY") ?: ""
+            } catch (_: Exception) {
+                ""
+            }
         }
     }
 
     /**
-     * Process an image URI using the Gemini multimodal API.
+     * Process an image URI using the Gemini multimodal Vision API or local Google ML Kit fallback.
      */
     suspend fun processImageUri(context: Context, imageUri: Uri): GeminiExtractionResult = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.contentResolver.openInputStream(imageUri)
-                ?: return@withContext GeminiExtractionResult(
-                    screenshotType = "UNKNOWN",
-                    summary = "Failed to open image stream",
-                    extractedLogs = emptyList(),
-                    extractedTarget = null,
-                    rawExtractedText = "",
-                    isSuccess = false,
-                    errorMessage = "Cannot access selected image file."
-                )
+                ?: return@withContext processWithLocalMlKitFallbackUri(context, imageUri)
 
             val bitmap = BitmapFactory.decodeStream(inputStream)
             inputStream.close()
@@ -137,146 +157,352 @@ object GeminiLogExtractionService {
     }
 
     /**
-     * Process a bitmap directly using the Gemini multimodal API.
+     * Process a bitmap with Gemini Vision API, automatically falling back to Google ML Kit Text Recognition.
      */
     suspend fun processBitmap(bitmap: Bitmap): GeminiExtractionResult = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
-        if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-            return@withContext GeminiExtractionResult(
-                screenshotType = "UNKNOWN",
-                summary = "Gemini API Key missing or not set in AI Studio Secrets panel.",
-                extractedLogs = emptyList(),
-                extractedTarget = null,
-                rawExtractedText = "",
-                isSuccess = false,
-                errorMessage = "GEMINI_API_KEY is not configured. Please add your Gemini API key in the Secrets panel in AI Studio."
-            )
-        }
 
-        // Downscale bitmap if too large to conserve bandwidth and latency
-        val scaledBitmap = scaleBitmapDown(bitmap, maxDimension = 1536)
-        val base64Image = bitmapToBase64(scaledBitmap)
-
-        val prompt = """
-            You are an expert OCR and intelligence extractor for cyber attack logs and target dossiers.
-            Analyze this uploaded screenshot carefully.
-            The screenshot typically depicts:
-            1. Ingested Logs (Personal Input logs or Victim Output raid logs). In these logs:
-               - IP addresses appear (e.g. 192.168.1.100 or masked xxx.xxx.xxx.xxx)
-               - Crypto amounts stolen or transferred appear (numbers followed by ₡, Cr, or crypto)
-               - Victim or target crypto wallet hashes appear (e.g. 0x892a...f412)
-               - Timestamps appear in format YYYY-MM-DD HH:MM:SS or similar
-               - Log type is "INPUT" (personal logs showing raids on targets) or "OUTPUT" (victim logs showing who raided them)
-            2. Or a Target Profile Screen (showing Account Name, IP address, Level, Reputation, Firewall FW, Encryption ENC, Wallet, Crew).
-            3. Or an Installed APPS Screen (showing Antivirus, Firewall, Password Encryptor, Password Cracker, etc.).
-
-            Your task is to extract ALL textual and structured data from this screenshot and output ONLY a JSON object with this exact structure:
-            {
-              "screenshotType": "LOGS" | "PROFILE" | "APPS" | "UNKNOWN",
-              "summary": "Short 1-2 sentence description of what was extracted",
-              "rawExtractedText": "Full reconstructed text extracted from the screenshot",
-              "extractedLogs": [
-                {
-                  "ip": "string",
-                  "wallet": "string or null",
-                  "stolenAmount": 0,
-                  "timestampStr": "YYYY-MM-DD HH:MM:SS",
-                  "logType": "INPUT" | "OUTPUT"
+        // 1. If API key is present, attempt Gemini Multimodal Vision API across candidate models
+        if (hasValidApiKey()) {
+            for (model in CANDIDATE_MODELS) {
+                val apiResult = callGeminiMultimodalApi(bitmap, apiKey, model)
+                if (apiResult.isSuccess && (apiResult.extractedLogs.isNotEmpty() || apiResult.extractedTarget != null)) {
+                    return@withContext apiResult
                 }
-              ],
-              "extractedTarget": {
-                "ip": "string or null",
-                "name": "string or null",
-                "level": 0,
-                "fw": 0,
-                "enc": 0,
-                "wallet": "string or null",
-                "crew": "string or null",
-                "stolenCrypto": 0,
-                "rep": 0,
-                "score": 0,
-                "antivirusLvl": 0,
-                "spamLvl": 0,
-                "rootkitLvl": 0,
-                "firewallAppLvl": 0,
-                "bypasserLvl": 0,
-                "passwordCrackerLvl": 0,
-                "passwordEncryptorLvl": 0,
-                "proxyLvl": 0,
-                "traceLvl": 0,
-                "keygenLvl": 0,
-                "siphonLvl": 0
-              }
             }
-            Extract installed software/apps levels if present on the screen (Antivirus, Spam, Rootkit, Firewall, Bypasser, Password Cracker, Password Encryptor, Proxy, Trace, Keygen, Siphon).
-            Do not wrap in markdown quotes if possible, output pure JSON.
-        """.trimIndent()
-
-        val jsonPayload = JSONObject().apply {
-            val contentsArray = JSONArray()
-            val contentObj = JSONObject()
-            val partsArray = JSONArray()
-
-            // Text prompt part
-            partsArray.put(JSONObject().put("text", prompt))
-
-            // Inline image data part
-            val inlineDataObj = JSONObject().apply {
-                put("mimeType", "image/jpeg")
-                put("data", base64Image)
-            }
-            partsArray.put(JSONObject().put("inlineData", inlineDataObj))
-
-            contentObj.put("parts", partsArray)
-            contentsArray.put(contentObj)
-            put("contents", contentsArray)
-
-            // Generation config with JSON response type
-            val genConfig = JSONObject().apply {
-                put("responseMimeType", "application/json")
-                put("temperature", 0.2)
-            }
-            put("generationConfig", genConfig)
         }
 
-        val requestUrl = "$BASE_URL?key=$apiKey"
-        val mediaType = "application/json; charset=utf-8".toMediaType()
-        val requestBody = jsonPayload.toString().toRequestBody(mediaType)
+        // 2. Local Fallback: Google ML Kit Text Recognition on device
+        val localResult = processWithLocalMlKit(bitmap)
+        if (localResult.isSuccess && (localResult.extractedLogs.isNotEmpty() || localResult.extractedTarget != null)) {
+            return@withContext localResult
+        }
 
-        val request = Request.Builder()
-            .url(requestUrl)
-            .post(requestBody)
-            .build()
+        return@withContext localResult
+    }
 
-        try {
+    /**
+     * Executes multimodal Gemini API call for a specific model name.
+     */
+    private fun callGeminiMultimodalApi(bitmap: Bitmap, apiKey: String, modelName: String): GeminiExtractionResult {
+        return try {
+            val scaledBitmap = scaleBitmapDown(bitmap, maxDimension = 1536)
+            val base64Image = bitmapToBase64(scaledBitmap)
+
+            val prompt = """
+                You are an expert OCR and intelligence extractor for Hack EX cyber attack logs and target dossiers.
+                Analyze this screenshot carefully.
+                Extract all textual and structured data from this screenshot and output ONLY a JSON object with this exact structure:
+                {
+                  "screenshotType": "LOGS" | "PROFILE" | "APPS" | "UNKNOWN",
+                  "summary": "Short 1-2 sentence description of what was extracted",
+                  "rawExtractedText": "Full reconstructed text extracted from the screenshot",
+                  "extractedLogs": [
+                    {
+                      "ip": "string",
+                      "wallet": "string or null",
+                      "stolenAmount": 0,
+                      "timestampStr": "string",
+                      "logType": "INPUT" | "OUTPUT"
+                    }
+                  ],
+                  "extractedTarget": {
+                    "ip": "string or null",
+                    "name": "string or null",
+                    "level": 0,
+                    "fw": 0,
+                    "enc": 0,
+                    "wallet": "string or null",
+                    "crew": "string or null",
+                    "stolenCrypto": 0,
+                    "rep": 0,
+                    "score": 0,
+                    "antivirusLvl": 0,
+                    "spamLvl": 0,
+                    "rootkitLvl": 0,
+                    "firewallAppLvl": 0,
+                    "bypasserLvl": 0,
+                    "passwordCrackerLvl": 0,
+                    "passwordEncryptorLvl": 0,
+                    "proxyLvl": 0,
+                    "traceLvl": 0,
+                    "keygenLvl": 0,
+                    "siphonLvl": 0
+                  }
+                }
+                Do not wrap in markdown quotes if possible, output pure JSON.
+            """.trimIndent()
+
+            val jsonPayload = JSONObject().apply {
+                val contentsArray = JSONArray()
+                val contentObj = JSONObject()
+                val partsArray = JSONArray()
+
+                partsArray.put(JSONObject().put("text", prompt))
+
+                val inlineDataObj = JSONObject().apply {
+                    put("mimeType", "image/jpeg")
+                    put("data", base64Image)
+                }
+                partsArray.put(JSONObject().put("inlineData", inlineDataObj))
+
+                contentObj.put("parts", partsArray)
+                contentsArray.put(contentObj)
+                put("contents", contentsArray)
+
+                val genConfig = JSONObject().apply {
+                    put("responseMimeType", "application/json")
+                    put("temperature", 0.1)
+                }
+                put("generationConfig", genConfig)
+            }
+
+            val requestUrl = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val requestBody = jsonPayload.toString().toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .post(requestBody)
+                .build()
+
             val response = okHttpClient.newCall(request).execute()
             val responseBody = response.body?.string()
 
             if (!response.isSuccessful || responseBody == null) {
-                val code = response.code
-                return@withContext GeminiExtractionResult(
+                return GeminiExtractionResult(
                     screenshotType = "UNKNOWN",
-                    summary = "Gemini API request failed (HTTP $code)",
+                    summary = "Gemini API request with $modelName returned HTTP ${response.code}",
                     extractedLogs = emptyList(),
                     extractedTarget = null,
                     rawExtractedText = "",
                     isSuccess = false,
-                    errorMessage = "Gemini API returned error code $code: ${responseBody?.take(200)}"
+                    errorMessage = "HTTP ${response.code}: ${responseBody?.take(150)}",
+                    usedEngine = modelName
                 )
             }
 
-            parseGeminiApiResponse(responseBody)
+            val parsed = parseGeminiApiResponse(responseBody)
+            parsed.copy(usedEngine = modelName)
         } catch (e: Exception) {
             GeminiExtractionResult(
                 screenshotType = "UNKNOWN",
-                summary = "Network exception calling Gemini API",
+                summary = "Network exception calling Gemini API ($modelName)",
                 extractedLogs = emptyList(),
                 extractedTarget = null,
                 rawExtractedText = "",
                 isSuccess = false,
-                errorMessage = e.localizedMessage ?: "Unknown network failure"
+                errorMessage = e.localizedMessage ?: "Network connection error",
+                usedEngine = modelName
             )
         }
+    }
+
+    /**
+     * Local OCR Engine: Google ML Kit Text Recognition fallback.
+     * Extracts text on-device without needing internet or API keys, and runs domain heuristic parser.
+     */
+    suspend fun processWithLocalMlKit(bitmap: Bitmap): GeminiExtractionResult = withContext(Dispatchers.IO) {
+        try {
+            val rawText = runMlKitTextRecognition(bitmap)
+            if (rawText.isBlank()) {
+                return@withContext GeminiExtractionResult(
+                    screenshotType = "UNKNOWN",
+                    summary = "Local ML Kit OCR completed: no text detected in screenshot.",
+                    extractedLogs = emptyList(),
+                    extractedTarget = null,
+                    rawExtractedText = "",
+                    isSuccess = false,
+                    errorMessage = "No text detected by Google ML Kit.",
+                    usedEngine = "ML_KIT_LOCAL"
+                )
+            }
+
+            parseLocalExtractedText(rawText)
+        } catch (e: Exception) {
+            GeminiExtractionResult(
+                screenshotType = "UNKNOWN",
+                summary = "Local ML Kit OCR exception: ${e.message}",
+                extractedLogs = emptyList(),
+                extractedTarget = null,
+                rawExtractedText = "",
+                isSuccess = false,
+                errorMessage = e.localizedMessage ?: "ML Kit execution error",
+                usedEngine = "ML_KIT_LOCAL"
+            )
+        }
+    }
+
+    private suspend fun processWithLocalMlKitFallbackUri(context: Context, imageUri: Uri): GeminiExtractionResult = withContext(Dispatchers.IO) {
+        try {
+            val image = InputImage.fromFilePath(context, imageUri)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val rawText = suspendCancellableCoroutine<String> { continuation ->
+                recognizer.process(image)
+                    .addOnSuccessListener { visionText -> continuation.resume(visionText.text ?: "") }
+                    .addOnFailureListener { continuation.resume("") }
+            }
+            if (rawText.isNotBlank()) {
+                parseLocalExtractedText(rawText)
+            } else {
+                GeminiExtractionResult(
+                    screenshotType = "UNKNOWN",
+                    summary = "Local ML Kit OCR: empty text",
+                    extractedLogs = emptyList(),
+                    extractedTarget = null,
+                    rawExtractedText = "",
+                    isSuccess = false,
+                    errorMessage = "Cannot extract text from image URI.",
+                    usedEngine = "ML_KIT_LOCAL"
+                )
+            }
+        } catch (e: Exception) {
+            GeminiExtractionResult(
+                screenshotType = "UNKNOWN",
+                summary = "Error accessing image URI: ${e.message}",
+                extractedLogs = emptyList(),
+                extractedTarget = null,
+                rawExtractedText = "",
+                isSuccess = false,
+                errorMessage = e.localizedMessage,
+                usedEngine = "ML_KIT_LOCAL"
+            )
+        }
+    }
+
+    private suspend fun runMlKitTextRecognition(bitmap: Bitmap): String = suspendCancellableCoroutine { continuation ->
+        try {
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val image = InputImage.fromBitmap(bitmap, 0)
+            recognizer.process(image)
+                .addOnSuccessListener { visionText ->
+                    continuation.resume(visionText.text ?: "")
+                }
+                .addOnFailureListener {
+                    continuation.resume("")
+                }
+        } catch (_: Exception) {
+            continuation.resume("")
+        }
+    }
+
+    /**
+     * Parses raw extracted OCR text into structured targets, logs, wallets and apps.
+     */
+    fun parseLocalExtractedText(rawText: String): GeminiExtractionResult {
+        // 1. Try LogParser first (for Hack EX 2 reverse chronological logs)
+        val parseResult = LogParser.parseLogs(rawText, DatabaseScope.INTERNAL, contributor = "MLKit_OCR")
+        val parsedLogs = mutableListOf<GeminiParsedLog>()
+
+        for (raid in parseResult.raidLogs) {
+            parsedLogs.add(
+                GeminiParsedLog(
+                    ip = raid.ip,
+                    wallet = raid.wallet.takeIf { it.isNotBlank() },
+                    stolenAmount = raid.stolenAmount,
+                    timestampStr = raid.timestampStr,
+                    logType = "INPUT"
+                )
+            )
+        }
+
+        // 2. Extract standalone IPs and Wallets
+        val ipPattern = Pattern.compile("""\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b""")
+        val ipMatcher = ipPattern.matcher(rawText)
+        val allIps = mutableListOf<String>()
+        while (ipMatcher.find()) {
+            val foundIp = ipMatcher.group()
+            if (!foundIp.startsWith("0.") && !foundIp.startsWith("127.") && !foundIp.contains("xxx")) {
+                allIps.add(foundIp)
+            }
+        }
+
+        val walletPattern = Pattern.compile("""\b(hx[a-zA-Z0-9\.]{6,}|0x[a-zA-Z0-9\.]{6,}|[a-zA-Z0-9]{4,}\.{3}[a-zA-Z0-9]{4,})\b""")
+        val walletMatcher = walletPattern.matcher(rawText)
+        val allWallets = mutableListOf<String>()
+        while (walletMatcher.find()) {
+            allWallets.add(walletMatcher.group())
+        }
+
+        // Level, FW, ENC, Rep, Crypto patterns
+        val levelMatch = Regex("""(?:Level|LVL|Lvl)\s*[:#]?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val fwMatch = Regex("""(?:FW|Firewall)\s*[:#]?\s*(?:Lvl\s*)?(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val encMatch = Regex("""(?:ENC|Encryption)\s*[:#]?\s*(?:Lvl\s*)?(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val repMatch = Regex("""(?:Rep|Reputation)\s*[:#]?\s*([0-9,]+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val cryptoMatch = Regex("""(?:Crypto|Stole|Amount)\s*[:#]?\s*([0-9,]+)""", RegexOption.IGNORE_CASE).find(rawText)
+
+        // App levels
+        val avMatch = Regex("""(?:Antivirus|AV)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val spamMatch = Regex("""(?:Spam)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val rkMatch = Regex("""(?:Rootkit)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val bypasserMatch = Regex("""(?:Bypasser)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val pcMatch = Regex("""(?:Password Cracker|Cracker)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        val peMatch = Regex("""(?:Password Encryptor|Encryptor)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+
+        // Pair unmatched IPs to detected wallets
+        if (parsedLogs.isEmpty() && allIps.isNotEmpty()) {
+            for (i in allIps.indices) {
+                val ip = allIps[i]
+                val wallet = allWallets.getOrNull(i)
+                val amount = cryptoMatch?.groupValues?.get(1)?.replace(",", "")?.toLongOrNull() ?: 0L
+                parsedLogs.add(
+                    GeminiParsedLog(
+                        ip = ip,
+                        wallet = wallet,
+                        stolenAmount = amount,
+                        timestampStr = "00-00 00:00",
+                        logType = "INPUT"
+                    )
+                )
+            }
+        }
+
+        val primaryIp = allIps.firstOrNull() ?: parseResult.targets.firstOrNull()?.ip
+        val primaryWallet = allWallets.firstOrNull() ?: parseResult.targets.firstOrNull()?.wallet
+
+        val detectedTarget = if (primaryIp != null || primaryWallet != null || levelMatch != null) {
+            val totalCrypto = cryptoMatch?.groupValues?.get(1)?.replace(",", "")?.toLongOrNull()
+                ?: parseResult.targets.sumOf { it.stolenCrypto }
+
+            GeminiParsedTarget(
+                ip = primaryIp,
+                name = primaryIp?.let { "Host-$it" } ?: "Target_Node",
+                level = levelMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1,
+                fw = fwMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1,
+                enc = encMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1,
+                wallet = primaryWallet,
+                stolenCrypto = totalCrypto,
+                rep = repMatch?.groupValues?.get(1)?.replace(",", "")?.toIntOrNull() ?: 0,
+                antivirusLvl = avMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                spamLvl = spamMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                rootkitLvl = rkMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                bypasserLvl = bypasserMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                passwordCrackerLvl = pcMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                passwordEncryptorLvl = peMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                appsParsed = avMatch != null || bypasserMatch != null || pcMatch != null || peMatch != null
+            )
+        } else null
+
+        val isLogsType = parsedLogs.isNotEmpty() || rawText.contains("Accessed device", ignoreCase = true) || rawText.contains("Stole", ignoreCase = true)
+        val screenshotType = when {
+            isLogsType -> "LOGS"
+            detectedTarget?.appsParsed == true -> "APPS"
+            detectedTarget != null -> "PROFILE"
+            else -> "UNKNOWN"
+        }
+
+        val summary = "[LOCAL_OCR] Extracted ${parsedLogs.size} logs, target: ${detectedTarget?.ip ?: "None"} via Google ML Kit Text Recognition."
+
+        return GeminiExtractionResult(
+            screenshotType = screenshotType,
+            summary = summary,
+            extractedLogs = parsedLogs,
+            extractedTarget = detectedTarget,
+            rawExtractedText = rawText,
+            isSuccess = parsedLogs.isNotEmpty() || detectedTarget != null || rawText.isNotBlank(),
+            errorMessage = null,
+            usedEngine = "ML_KIT_LOCAL"
+        )
     }
 
     private fun parseGeminiApiResponse(responseJsonStr: String): GeminiExtractionResult {
@@ -312,7 +538,6 @@ object GeminiLogExtractionService {
                 )
             }
 
-            // Clean markdown wrapping if present
             val cleanJson = textContent.trim()
                 .removePrefix("```json")
                 .removePrefix("```")
@@ -324,7 +549,6 @@ object GeminiLogExtractionService {
             val summary = parsedJson.optString("summary", "Extraction completed via Gemini Vision")
             val rawExtractedText = parsedJson.optString("rawExtractedText", "")
 
-            // Parse extractedLogs
             val logsList = mutableListOf<GeminiParsedLog>()
             val logsArray = parsedJson.optJSONArray("extractedLogs")
             if (logsArray != null) {
@@ -345,7 +569,6 @@ object GeminiLogExtractionService {
                 }
             }
 
-            // Parse extractedTarget
             var parsedTarget: GeminiParsedTarget? = null
             val targetObj = parsedJson.optJSONObject("extractedTarget")
             if (targetObj != null) {
@@ -398,7 +621,8 @@ object GeminiLogExtractionService {
                 extractedLogs = logsList,
                 extractedTarget = parsedTarget,
                 rawExtractedText = rawExtractedText,
-                isSuccess = true
+                isSuccess = true,
+                usedEngine = "GEMINI_API"
             )
         } catch (e: Exception) {
             GeminiExtractionResult(
@@ -430,7 +654,7 @@ object GeminiLogExtractionService {
             targets.add(
                 TargetEntity(
                     ip = targetIp,
-                    name = pt.name ?: "GeminiHost",
+                    name = pt.name ?: "Target-$targetIp",
                     level = if (pt.level > 0) pt.level else 1,
                     fw = pt.fw,
                     enc = pt.enc,
@@ -471,7 +695,7 @@ object GeminiLogExtractionService {
             targets.add(
                 TargetEntity(
                     ip = ip,
-                    name = "Host_$ip",
+                    name = "Target-$ip",
                     level = 1,
                     fw = 0,
                     enc = 0,

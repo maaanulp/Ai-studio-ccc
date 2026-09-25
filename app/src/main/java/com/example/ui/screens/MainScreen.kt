@@ -183,19 +183,7 @@ fun MainScreen(viewModel: IntelViewModel) {
                                 .border(BorderStroke(1.dp, MatrixBorderBright))
                         ) {
                             val profileNames = crewAccounts.map { it.username }.filter { it.isNotBlank() }.distinct()
-                            if (profileNames.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = "No accounts registered",
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.sp,
-                                            color = MatrixTextMuted
-                                        )
-                                    },
-                                    onClick = { showProfileDropdown = false }
-                                )
-                            } else {
+                            if (profileNames.isNotEmpty()) {
                                 profileNames.forEach { p ->
                                     DropdownMenuItem(
                                         text = {
@@ -213,6 +201,21 @@ fun MainScreen(viewModel: IntelViewModel) {
                                     )
                                 }
                             }
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "+ CONFIGURE OPERATIVE HANDLE",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CyberAmber
+                                    )
+                                },
+                                onClick = {
+                                    showProfileDropdown = false
+                                    viewModel.openAuthModal()
+                                }
+                            )
                         }
                     }
                 }
