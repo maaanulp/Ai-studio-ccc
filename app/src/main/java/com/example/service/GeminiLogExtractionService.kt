@@ -73,11 +73,11 @@ data class GeminiExtractionResult(
 
 object GeminiLogExtractionService {
 
-    // Models prioritized in requested order, with cascading fallbacks to eliminate 404s
+    // Models prioritized in requested order, placing gemini-1.5-flash first for complex software vision screens
     private val CANDIDATE_MODELS = listOf(
-        "gemini-2.5-flash",
         "gemini-1.5-flash",
         "gemini-flash-latest",
+        "gemini-2.5-flash",
         "gemini-3.5-flash",
         "gemini-3.0-flash"
     )
@@ -190,9 +190,29 @@ object GeminiLogExtractionService {
             val base64Image = bitmapToBase64(scaledBitmap)
 
             val prompt = """
-                You are an expert OCR and intelligence extractor for Hack EX cyber attack logs and target dossiers.
+                You are an expert OCR and intelligence extractor for Hack EX cyber attack logs, target dossiers, and installed software/apps matrices.
                 Analyze this screenshot carefully.
-                Extract all textual and structured data from this screenshot and output ONLY a JSON object with this exact structure:
+
+                CLASSIFICATION INSTRUCTIONS:
+                1. If the screenshot contains "// APPS", "INSTALLED SOFTWARE", "Installed Software", or a list of software/apps (Antivirus, Spam, Rootkit, Firewall, Bypasser, Password Cracker, Password Encryptor, Proxy, Trace, Keygen, Siphon), set "screenshotType": "APPS".
+                2. If the screenshot contains attack logs with timestamps, IPs, and crypto amounts, set "screenshotType": "LOGS".
+                3. If the screenshot depicts a target account profile screen (IP, Level, Reputation, FW, ENC), set "screenshotType": "PROFILE".
+
+                ROW-BY-ROW SOFTWARE EXTRACTION FOR "APPS" SCREENS:
+                Extract each row's level formatted as LVL [number] or Level [number]:
+                - Antivirus -> antivirusLvl (e.g., "Antivirus LVL 20" -> 20)
+                - Spam -> spamLvl (e.g., "Spam LVL 14" -> 14)
+                - Rootkit -> rootkitLvl (e.g., "Rootkit LVL 11" -> 11)
+                - Firewall -> firewallAppLvl (e.g., "Firewall LVL 25" -> 25)
+                - Bypasser -> bypasserLvl (e.g., "Bypasser LVL 18" -> 18)
+                - Password Cracker -> passwordCrackerLvl (e.g., "Password Cracker LVL 15" -> 15)
+                - Password Encryptor -> passwordEncryptorLvl (e.g., "Password Encryptor LVL 12" -> 12)
+                - Proxy -> proxyLvl (e.g., "Proxy LVL 10" -> 10)
+                - Trace -> traceLvl (e.g., "Trace LVL 8" -> 8)
+                - Keygen -> keygenLvl (e.g., "Keygen LVL 5" -> 5)
+                - Siphon -> siphonLvl (e.g., "Siphon LVL 3" -> 3)
+
+                Output ONLY a JSON object with this exact structure:
                 {
                   "screenshotType": "LOGS" | "PROFILE" | "APPS" | "UNKNOWN",
                   "summary": "Short 1-2 sentence description of what was extracted",
@@ -386,6 +406,19 @@ object GeminiLogExtractionService {
         }
     }
 
+    private fun extractAppLevelFromText(rawText: String, primaryName: String, altNames: List<String> = emptyList()): Int {
+        val candidates = listOf(primaryName) + altNames
+        for (name in candidates) {
+            val regex = Regex("""(?i)\b${Regex.escape(name)}\b[^\n\r]*?(?:LVL|Lvl|Level|v|#)?\s*[:#\-]?\s*(\d+)""")
+            val match = regex.find(rawText)
+            if (match != null) {
+                val lvl = match.groupValues[1].toIntOrNull()
+                if (lvl != null && lvl in 1..999) return lvl
+            }
+        }
+        return 0
+    }
+
     /**
      * Parses raw extracted OCR text into structured targets, logs, wallets and apps.
      */
@@ -431,13 +464,31 @@ object GeminiLogExtractionService {
         val repMatch = Regex("""(?:Rep|Reputation)\s*[:#]?\s*([0-9,]+)""", RegexOption.IGNORE_CASE).find(rawText)
         val cryptoMatch = Regex("""(?:Crypto|Stole|Amount)\s*[:#]?\s*([0-9,]+)""", RegexOption.IGNORE_CASE).find(rawText)
 
-        // App levels
-        val avMatch = Regex("""(?:Antivirus|AV)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
-        val spamMatch = Regex("""(?:Spam)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
-        val rkMatch = Regex("""(?:Rootkit)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
-        val bypasserMatch = Regex("""(?:Bypasser)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
-        val pcMatch = Regex("""(?:Password Cracker|Cracker)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
-        val peMatch = Regex("""(?:Password Encryptor|Encryptor)\s*[:#]?\s*(?:v|lvl)?\s*(\d+)""", RegexOption.IGNORE_CASE).find(rawText)
+        // App levels extraction for all 11 Hack EX software
+        fun getAppLvl(name: String, alts: List<String> = emptyList()): Int =
+            extractAppLevelFromText(rawText, name, alts)
+
+        val avLvl = getAppLvl("Antivirus", listOf("AV", "Anti-Virus"))
+        val spamLvl = getAppLvl("Spam", listOf("SpamBot"))
+        val rkLvl = getAppLvl("Rootkit", listOf("Root-Kit"))
+        val fwAppLvl = getAppLvl("Firewall", listOf("FW", "Firewall App"))
+        val bypasserLvl = getAppLvl("Bypasser", listOf("Bypass"))
+        val pcLvl = getAppLvl("Password Cracker", listOf("PW Cracker", "Cracker"))
+        val peLvl = getAppLvl("Password Encryptor", listOf("PW Encryptor", "Encryptor"))
+        val proxyLvl = getAppLvl("Proxy")
+        val traceLvl = getAppLvl("Trace", listOf("Tracer"))
+        val keygenLvl = getAppLvl("Keygen", listOf("Key-Gen"))
+        val siphonLvl = getAppLvl("Siphon", listOf("Crypto Siphon"))
+
+        val hasAppsHeader = rawText.contains("// APPS", ignoreCase = true) ||
+                            rawText.contains("INSTALLED SOFTWARE", ignoreCase = true) ||
+                            rawText.contains("installed software", ignoreCase = true) ||
+                            (rawText.contains("APPS", ignoreCase = true) && !rawText.contains("LOGS", ignoreCase = true))
+
+        val hasAnyAppLvl = avLvl > 0 || spamLvl > 0 || rkLvl > 0 || fwAppLvl > 0 || bypasserLvl > 0 ||
+                           pcLvl > 0 || peLvl > 0 || proxyLvl > 0 || traceLvl > 0 || keygenLvl > 0 || siphonLvl > 0
+
+        val appsParsed = hasAppsHeader || hasAnyAppLvl
 
         // Pair unmatched IPs to detected wallets
         if (parsedLogs.isEmpty() && allIps.isNotEmpty()) {
@@ -460,33 +511,38 @@ object GeminiLogExtractionService {
         val primaryIp = allIps.firstOrNull() ?: parseResult.targets.firstOrNull()?.ip
         val primaryWallet = allWallets.firstOrNull() ?: parseResult.targets.firstOrNull()?.wallet
 
-        val detectedTarget = if (primaryIp != null || primaryWallet != null || levelMatch != null) {
+        val detectedTarget = if (primaryIp != null || primaryWallet != null || levelMatch != null || appsParsed) {
             val totalCrypto = cryptoMatch?.groupValues?.get(1)?.replace(",", "")?.toLongOrNull()
                 ?: parseResult.targets.sumOf { it.stolenCrypto }
 
             GeminiParsedTarget(
                 ip = primaryIp,
-                name = primaryIp?.let { "Host-$it" } ?: "Target_Node",
+                name = primaryIp?.let { "Host-$it" } ?: "Software_Matrix_Node",
                 level = levelMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1,
                 fw = fwMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1,
                 enc = encMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1,
                 wallet = primaryWallet,
                 stolenCrypto = totalCrypto,
                 rep = repMatch?.groupValues?.get(1)?.replace(",", "")?.toIntOrNull() ?: 0,
-                antivirusLvl = avMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-                spamLvl = spamMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-                rootkitLvl = rkMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-                bypasserLvl = bypasserMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-                passwordCrackerLvl = pcMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-                passwordEncryptorLvl = peMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-                appsParsed = avMatch != null || bypasserMatch != null || pcMatch != null || peMatch != null
+                antivirusLvl = avLvl,
+                spamLvl = spamLvl,
+                rootkitLvl = rkLvl,
+                firewallAppLvl = fwAppLvl,
+                bypasserLvl = bypasserLvl,
+                passwordCrackerLvl = pcLvl,
+                passwordEncryptorLvl = peLvl,
+                proxyLvl = proxyLvl,
+                traceLvl = traceLvl,
+                keygenLvl = keygenLvl,
+                siphonLvl = siphonLvl,
+                appsParsed = appsParsed
             )
         } else null
 
         val isLogsType = parsedLogs.isNotEmpty() || rawText.contains("Accessed device", ignoreCase = true) || rawText.contains("Stole", ignoreCase = true)
         val screenshotType = when {
+            hasAppsHeader || appsParsed -> "APPS"
             isLogsType -> "LOGS"
-            detectedTarget?.appsParsed == true -> "APPS"
             detectedTarget != null -> "PROFILE"
             else -> "UNKNOWN"
         }

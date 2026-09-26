@@ -140,7 +140,7 @@ fun ScreenshotScannerScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Scanner Sub-Tabs: [Manual Logs] first, then [OCR / Screenshot]
+        // Scanner Sub-Tabs: [Process Logs] first, then [OCR / Screenshot]
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -151,7 +151,7 @@ fun ScreenshotScannerScreen(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             ScannerSubTabButton(
-                title = "[Manual Logs]",
+                title = "[Process Logs]",
                 selected = scannerTab == ScannerTab.MANUAL_LOGS,
                 onClick = { viewModel.setScannerTab(ScannerTab.MANUAL_LOGS) },
                 modifier = Modifier.weight(1f)
@@ -161,42 +161,6 @@ fun ScreenshotScannerScreen(
                 selected = scannerTab == ScannerTab.OCR_SCREENSHOT,
                 onClick = { viewModel.setScannerTab(ScannerTab.OCR_SCREENSHOT) },
                 modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Selectable direct export options: [Export to internal db] & [Export to general db]
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(MatrixDarkSurfaceVariant)
-                .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "DESTINATIONS:",
-                fontFamily = FontFamily.Monospace,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = MatrixTextMuted
-            )
-            DestinationToggleButton(
-                label = "Internal",
-                isSelected = exportToInternalOption,
-                onToggle = { viewModel.toggleExportToInternalOption() },
-                modifier = Modifier.weight(1f),
-                testTag = "toggle_export_internal_btn"
-            )
-            DestinationToggleButton(
-                label = "General",
-                isSelected = exportToGeneralOption,
-                onToggle = { viewModel.toggleExportToGeneralOption() },
-                modifier = Modifier.weight(1f),
-                testTag = "toggle_export_general_btn"
             )
         }
 

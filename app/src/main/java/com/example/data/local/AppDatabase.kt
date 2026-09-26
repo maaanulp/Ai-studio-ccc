@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.model.CrewAccountEntity
+import com.example.data.model.FeedCommentEntity
+import com.example.data.model.FeedPostEntity
 import com.example.data.model.IntelligenceReportEntity
 import com.example.data.model.LogEntryEntity
 import com.example.data.model.OcrTextResultEntity
@@ -18,9 +20,11 @@ import com.example.data.model.TargetEntity
         CrewAccountEntity::class,
         IntelligenceReportEntity::class,
         LogEntryEntity::class,
-        OcrTextResultEntity::class
+        OcrTextResultEntity::class,
+        FeedPostEntity::class,
+        FeedCommentEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun intelligenceReportDao(): IntelligenceReportDao
     abstract fun logEntryDao(): LogEntryDao
     abstract fun ocrTextResultDao(): OcrTextResultDao
+    abstract fun feedDao(): FeedDao
 
     companion object {
         @Volatile
@@ -39,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "crypt0_cr3w_central.db"
-                ).fallbackToDestructiveMigration()
+                ).fallbackToDestructiveMigration(true)
                  .build()
                 INSTANCE = instance
                 instance

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Crypt0 Cr3w Central</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#00FF66">
+
+  <!-- iOS / Safari Metatags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CCC Indexer">
+  <link rel="apple-touch-icon" href="/assets/icon-192.png">
+
+  <!-- Open Graph & Mobile Styling -->
+  <meta name="description" content="Cyber log parser, screenshot OCR indexer, intelligence database, and operational analytics for Crypt0 Cr3w Central.">
+  <meta name="mobile-web-app-capable" content="yes">
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body, html {
+      background-color: #000000;
+      color: #00FF66;
+      font-family: 'Courier New', Courier, monospace;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .terminal-box {
+      border: 1px solid #00FF66;
+      box-shadow: 0 0 15px rgba(0, 255, 102, 0.25);
+      background: #020703;
+      padding: 24px;
+      border-radius: 6px;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+    }
+    .glitch-title {
+      font-size: 20px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px #00FF66;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(0, 255, 102, 0.15);
+      border: 1px solid #00FF66;
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 3px;
+      margin-bottom: 16px;
+    }
+    .status-text {
+      font-size: 12px;
+      color: #79a888;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .btn {
+      background: #00FF66;
+      color: #000000;
+      border: none;
+      font-family: inherit;
+      font-weight: bold;
+      font-size: 13px;
+      padding: 10px 18px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn:hover {
+      box-shadow: 0 0 12px #00FF66;
+      background: #33ff88;
+    }
+  </style>
+</head>
+<body>
+  <div class="terminal-box">
+    <div class="glitch-title">Crypt0 Cr3w Central</div>
+    <div class="badge">PWA CORE ACTIVE // STANDALONE READY</div>
+    <p class="status-text">
+      &gt; Multiplatform Progressive Web App initialized for iOS and Android.<br>
+      &gt; Service Worker offline caching and standalone display configured.
+    </p>
+    <button class="btn" id="install-btn" style="display:none;">[ INSTALL TO HOME SCREEN ]</button>
+  </div>
+
+  <script>
+    // Register Service Worker for PWA Offline Caching and Home Screen Installation
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then((registration) => {
+            console.log('PWA ServiceWorker registered with scope:', registration.scope);
+          })
+          .catch((error) => {
+            console.warn('PWA ServiceWorker registration failed:', error);
+          });
+      });
+    }
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('install-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'inline-block';
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response to install prompt: ${outcome}`);
+        deferredPrompt = null;
+        installBtn.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -41,7 +41,8 @@ class HackExE2ESimulationTest {
             targetDao = db.targetDao(),
             reportDao = db.intelligenceReportDao(),
             logEntryDao = db.logEntryDao(),
-            ocrResultDao = db.ocrTextResultDao()
+            ocrResultDao = db.ocrTextResultDao(),
+            feedDao = db.feedDao()
         )
         viewModel = IntelViewModel(app, repository)
     }
@@ -221,5 +222,114 @@ class HackExE2ESimulationTest {
         assertTrue("Should produce logs from OCR", logs.isNotEmpty())
         val foundTarget = targets.find { it.ip == "111.98.13.146" || it.ip == "10.76.96.9" }
         assertNotNull("Target should be extracted", foundTarget)
+    }
+
+    @Test
+    fun `test installed software apps screen classification and row levels`() {
+        val simulatedAppsScreenOcr = """
+            // APPS
+            Target Account: CyberGhost_88
+            Installed Software Matrix:
+            Antivirus LVL 20
+            Spam LVL 14
+            Rootkit LVL 11
+            Firewall LVL 25
+            Bypasser LVL 18
+            Password Cracker LVL 15
+            Password Encryptor LVL 12
+            Proxy LVL 10
+            Trace LVL 8
+            Keygen LVL 5
+            Siphon LVL 3
+        """.trimIndent()
+
+        val result = com.example.service.GeminiLogExtractionService.parseLocalExtractedText(simulatedAppsScreenOcr)
+        assertTrue(result.isSuccess)
+        assertEquals("APPS", result.screenshotType)
+        assertNotNull(result.extractedTarget)
+        val target = result.extractedTarget!!
+        assertTrue(target.appsParsed)
+        assertEquals(20, target.antivirusLvl)
+        assertEquals(14, target.spamLvl)
+        assertEquals(11, target.rootkitLvl)
+        assertEquals(25, target.firewallAppLvl)
+        assertEquals(18, target.bypasserLvl)
+        assertEquals(15, target.passwordCrackerLvl)
+        assertEquals(12, target.passwordEncryptorLvl)
+        assertEquals(10, target.proxyLvl)
+        assertEquals(8, target.traceLvl)
+        assertEquals(5, target.keygenLvl)
+        assertEquals(3, target.siphonLvl)
+    }
+
+    @Test
+    fun `test crew telemetry score and leaderboard rankings`() = runBlocking {
+        val target1 = TargetEntity(
+            ip = "192.168.1.50",
+            name = "VictimNode_Alpha",
+            wallet = "0x88291a82",
+            scope = DatabaseScope.GENERAL,
+            contributor = "m0lt0rn",
+            crew = "CCC",
+            appsParsed = true,
+            firewallAppLvl = 25
+        )
+        val target2 = TargetEntity(
+            ip = "10.0.0.100",
+            name = "VictimNode_Beta",
+            wallet = "0x99201b11",
+            scope = DatabaseScope.GENERAL,
+            contributor = "CyberGhost_88",
+            crew = "CCC"
+        )
+
+        repository.insertOrUpdateTarget(target1)
+        repository.insertOrUpdateTarget(target2)
+
+        val opStats = viewModel.operativeRankStats.first()
+        assertTrue("Operative rankings should not be empty", opStats.isNotEmpty())
+
+        val moltornStats = opStats.find { it.handle == "m0lt0rn" }
+        assertNotNull("m0lt0rn should exist in rankings", moltornStats)
+        assertTrue("m0lt0rn score should reflect target contribution points", moltornStats!!.totalPts >= 70L)
+
+        val crewStats = viewModel.crewRankStats.first()
+        assertTrue("Crew rankings should not be empty", crewStats.isNotEmpty())
+        val cccCrew = crewStats.find { it.crewId == "CCC" }
+        assertNotNull("CCC crew should exist in crew rankings", cccCrew)
+    }
+
+    @Test
+    fun `test interactive feed publish post and thread comments`() = runBlocking {
+        viewModel.loginOperativeLocal("m0lt0rn", "werc-ccc")
+
+        viewModel.publishFeedArticle(
+            scope = com.example.data.model.FeedScope.CREW,
+            title = "Test Directive",
+            tag = com.example.data.model.FeedTag.PLAN,
+            content = "Detailed execution plan for subnet breach"
+        )
+
+        val posts = repository.getAllFeedPosts().first()
+        val createdPost = posts.find { it.title == "Test Directive" }
+        assertNotNull("Post should be created in repository", createdPost)
+        assertEquals("m0lt0rn", createdPost?.author)
+        assertEquals("[PLAN]", createdPost?.tag)
+
+        // Add a comment to the post
+        viewModel.addCommentToFeedPost(
+            postId = createdPost!!.id,
+            remotePostId = null,
+            content = "Acknowledged by CyberGhost"
+        )
+
+        val comments = repository.getCommentsForPost(createdPost.id).first()
+        assertEquals(1, comments.size)
+        assertEquals("Acknowledged by CyberGhost", comments[0].content)
+
+        // Upvote
+        viewModel.togglePostUpvote(createdPost.id)
+        val updatedPost = repository.getAllFeedPosts().first().find { it.id == createdPost.id }
+        assertEquals(1, updatedPost?.upvotes)
     }
 }

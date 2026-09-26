@@ -24,7 +24,8 @@ class MainActivity : ComponentActivity() {
                     targetDao = database.targetDao(),
                     reportDao = database.intelligenceReportDao(),
                     logEntryDao = database.logEntryDao(),
-                    ocrResultDao = database.ocrTextResultDao()
+                    ocrResultDao = database.ocrTextResultDao(),
+                    feedDao = database.feedDao()
                 )
                 return IntelViewModel(application, repository) as T
             }

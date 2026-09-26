@@ -1,24 +1,29 @@
 package com.example.data.repository
 
+import com.example.data.local.FeedDao
 import com.example.data.local.IntelligenceReportDao
 import com.example.data.local.LogEntryDao
 import com.example.data.local.OcrTextResultDao
 import com.example.data.local.TargetDao
 import com.example.data.model.CrewAccountEntity
 import com.example.data.model.DatabaseScope
+import com.example.data.model.FeedCommentEntity
+import com.example.data.model.FeedPostEntity
 import com.example.data.model.IntelligenceReportEntity
 import com.example.data.model.LogEntryEntity
 import com.example.data.model.OcrTextResultEntity
 import com.example.data.model.RaidLogEntity
 import com.example.data.model.TargetEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 
 class IntelRepository(
     private val targetDao: TargetDao,
     private val reportDao: IntelligenceReportDao,
     private val logEntryDao: LogEntryDao,
-    private val ocrResultDao: OcrTextResultDao
+    private val ocrResultDao: OcrTextResultDao,
+    private val feedDao: FeedDao? = null
 ) {
 
     // ==========================================
@@ -46,15 +51,22 @@ class IntelRepository(
     }
 
     suspend fun insertOrUpdateTarget(target: TargetEntity) {
-        val existing = targetDao.getTargetByIpAndScope(target.ip, target.scope)
+        val existingByIp = if (target.ip.isNotBlank()) targetDao.getTargetByIpAndScope(target.ip, target.scope) else null
+        val existingByName = if (target.name.isNotBlank() && target.name != "Target-${target.ip}") {
+            targetDao.getTargetByNameAndScope(target.name, target.scope)
+        } else null
+
+        val existing = existingByIp ?: existingByName
+
         if (existing == null) {
             targetDao.insertTarget(target)
         } else {
             val updated = existing.copy(
-                name = if (target.name.isNotBlank()) target.name else existing.name,
-                level = if (target.level > 0) target.level else existing.level,
-                fw = if (target.fw > 0) target.fw else existing.fw,
-                enc = if (target.enc > 0) target.enc else existing.enc,
+                ip = if (target.ip.isNotBlank() && !target.ip.startsWith("Pending_IP_")) target.ip else existing.ip,
+                name = if (target.name.isNotBlank() && !target.name.startsWith("Host-")) target.name else existing.name,
+                level = if (target.level > existing.level) target.level else if (target.level > 0) target.level else existing.level,
+                fw = if (target.fw > existing.fw) target.fw else if (target.fw > 0) target.fw else existing.fw,
+                enc = if (target.enc > existing.enc) target.enc else if (target.enc > 0) target.enc else existing.enc,
                 rep = if (target.rep != 0) target.rep else existing.rep,
                 score = if (target.score > 0) target.score else existing.score,
                 crew = if (target.crew.isNotBlank()) target.crew else existing.crew,
@@ -270,5 +282,57 @@ class IntelRepository(
 
     suspend fun initializeDefaultData() {
         // No hardcoded preloaded data; starts clean for production readiness
+    }
+
+    // ==========================================
+    // FEED & FORUM POSTS (ROOM CACHE)
+    // ==========================================
+
+    fun getAllFeedPosts(): Flow<List<FeedPostEntity>> {
+        return feedDao?.getAllPosts() ?: emptyFlow()
+    }
+
+    fun getFeedPostsByScope(scope: String): Flow<List<FeedPostEntity>> {
+        return feedDao?.getPostsByScope(scope) ?: emptyFlow()
+    }
+
+    fun getFeedPostsForCrew(crewId: String): Flow<List<FeedPostEntity>> {
+        return feedDao?.getPostsForCrew(crewId) ?: emptyFlow()
+    }
+
+    fun getAllComments(): Flow<List<FeedCommentEntity>> {
+        return feedDao?.getAllComments() ?: emptyFlow()
+    }
+
+    fun getCommentsForPost(postId: Long): Flow<List<FeedCommentEntity>> {
+        return feedDao?.getCommentsForPost(postId) ?: emptyFlow()
+    }
+
+    suspend fun insertFeedPost(post: FeedPostEntity): Long {
+        return feedDao?.insertPost(post) ?: 0L
+    }
+
+    suspend fun insertFeedPosts(posts: List<FeedPostEntity>) {
+        feedDao?.insertPosts(posts)
+    }
+
+    suspend fun insertFeedComment(comment: FeedCommentEntity): Long {
+        val id = feedDao?.insertComment(comment) ?: 0L
+        if (id > 0) {
+            feedDao?.incrementCommentsCount(comment.postId)
+        }
+        return id
+    }
+
+    suspend fun insertFeedComments(comments: List<FeedCommentEntity>) {
+        feedDao?.insertComments(comments)
+    }
+
+    suspend fun upvoteFeedPost(postId: Long) {
+        feedDao?.incrementUpvote(postId)
+    }
+
+    suspend fun deleteFeedPost(postId: Long) {
+        feedDao?.deletePost(postId)
     }
 }

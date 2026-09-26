@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CyberAmber
@@ -35,6 +36,7 @@ import com.example.ui.theme.MatrixBorder
 import com.example.ui.theme.MatrixBorderBright
 import com.example.ui.theme.MatrixDarkBackground
 import com.example.ui.theme.MatrixDarkSurface
+import com.example.ui.theme.MatrixGreenGlow
 import com.example.ui.theme.MatrixGreenPrimary
 import com.example.ui.theme.MatrixTextMuted
 import com.example.ui.viewmodel.IntelViewModel
@@ -46,7 +48,9 @@ fun HackerAuthModal(
 ) {
     val context = LocalContext.current
     val currentProfile by viewModel.currentProfile.collectAsState()
-    var operativeInput by remember { mutableStateOf(currentProfile) }
+    val linkedGoogleHandle = viewModel.getLinkedGoogleHandle()
+
+    var operativeInput by remember { mutableStateOf(currentProfile.ifBlank { linkedGoogleHandle }) }
     var passcode by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
 
@@ -67,7 +71,7 @@ fun HackerAuthModal(
                     color = MatrixGreenPrimary
                 )
                 Text(
-                    text = "Configure custom operative handle for telemetry, OCR & crew attribution",
+                    text = "Unified Authentication & Google OAuth Account Linking",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     color = MatrixTextMuted
@@ -79,24 +83,62 @@ fun HackerAuthModal(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Section 1: Operative Handle input
+                if (linkedGoogleHandle.isNotBlank()) {
+                    Text(
+                        text = "• LINKED GOOGLE OAUTH HANDLE: [$linkedGoogleHandle]",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MatrixGreenGlow
+                    )
+                }
+
+                // Section 1: Google OAuth
                 Text(
-                    text = "ENTER OPERATIVE HANDLE:",
+                    text = "[GOOGLE OAUTH ACCESS]",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MatrixGreenPrimary
+                    color = CyberAmber
                 )
 
+                HackerButton(
+                    text = "[G] CONTINUE WITH GOOGLE OAUTH",
+                    onClick = {
+                        val handle = operativeInput.trim()
+                        viewModel.authenticateOAuth("Google", handle) { success, msg ->
+                            if (!success && msg == "PROMPT_HANDLE_REQUIRED") {
+                                inputError = "First-time Google OAuth access: Enter your Operative Handle below to link your account permanently."
+                            } else {
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                if (success) onDismiss()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "oauth_google_btn"
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = "──────── LOCAL IDENTITY (HANDLE & PASSCODE) ────────",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 8.sp,
+                    color = MatrixTextMuted
+                )
+
+                // Mandatory Operative Handle Field
                 OutlinedTextField(
                     value = operativeInput,
                     onValueChange = {
                         operativeInput = it
                         if (it.isNotBlank()) inputError = null
                     },
+                    label = { Text("OPERATIVE HANDLE (ALIAS) *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
                     placeholder = {
                         Text(
-                            "e.g. Viper_Null, Shadow_01, CyberGhost_88",
+                            "Enter unique handle (e.g. CyberGhost_88)",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             color = MatrixTextMuted
@@ -116,6 +158,29 @@ fun HackerAuthModal(
                         .testTag("operative_handle_input")
                 )
 
+                // Mandatory Passcode Field for Local Authentication
+                OutlinedTextField(
+                    value = passcode,
+                    onValueChange = {
+                        passcode = it
+                        if (it.isNotBlank()) inputError = null
+                    },
+                    label = { Text("PASSCODE / PASSWORD *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                    placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MatrixDarkBackground,
+                        unfocusedContainerColor = MatrixDarkBackground,
+                        focusedBorderColor = MatrixGreenPrimary,
+                        unfocusedBorderColor = MatrixBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("operative_passcode_input")
+                )
+
                 inputError?.let { err ->
                     Text(
                         text = "[!] $err",
@@ -125,92 +190,48 @@ fun HackerAuthModal(
                     )
                 }
 
-                // Quick presets
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("Viper_Null", "Shadow_01", "Ghost_Sec").forEach { preset ->
+                    HackerButton(
+                        text = "[ESTABLISH LOCAL IDENTITY]",
+                        onClick = {
+                            val handle = operativeInput.trim()
+                            val pw = passcode.trim()
+                            if (handle.isBlank()) {
+                                inputError = "OPERATIVE HANDLE is required."
+                                return@HackerButton
+                            }
+                            if (pw.isBlank()) {
+                                inputError = "PASSCODE / PASSWORD is required for local identity."
+                                return@HackerButton
+                            }
+                            viewModel.loginOperativeLocal(handle, pw) { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                if (success) onDismiss()
+                                else inputError = msg
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        testTag = "login_operative_local_btn"
+                    )
+
+                    if (operativeInput.isNotBlank()) {
                         HackerButton(
-                            text = preset,
+                            text = "[LINK GOOGLE OAUTH]",
                             onClick = {
-                                operativeInput = preset
-                                inputError = null
+                                val handle = operativeInput.trim()
+                                viewModel.linkGoogleOAuthToHandle(handle) { success, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    if (success) onDismiss()
+                                }
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            testTag = "link_google_oauth_btn"
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Section 2: Quick OAuth Sign-In
-                Text(
-                    text = "[QUICK OAUTH ACCESS]",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CyberAmber
-                )
-
-                HackerButton(
-                    text = "[G] SIGN IN WITH GOOGLE OAUTH",
-                    onClick = {
-                        val handle = operativeInput.trim()
-                        if (handle.isBlank()) {
-                            inputError = "Please enter an Operative Handle first."
-                            return@HackerButton
-                        }
-                        viewModel.authenticateOAuth("Google", handle) { _, msg ->
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "oauth_google_btn"
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    text = "───────── LOCAL IDENTITY & PASSCODE ─────────",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 8.sp,
-                    color = MatrixTextMuted
-                )
-
-                OutlinedTextField(
-                    value = passcode,
-                    onValueChange = { passcode = it },
-                    label = { Text("PASSCODE (OPTIONAL)", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
-                    placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
-                    singleLine = true,
-                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MatrixGreenPrimary),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MatrixDarkBackground,
-                        unfocusedContainerColor = MatrixDarkBackground,
-                        focusedBorderColor = MatrixGreenPrimary,
-                        unfocusedBorderColor = MatrixBorder
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                HackerButton(
-                    text = "[ESTABLISH OPERATIVE IDENTITY]",
-                    onClick = {
-                        val handle = operativeInput.trim()
-                        if (handle.isBlank()) {
-                            inputError = "Operative Handle cannot be empty."
-                            return@HackerButton
-                        }
-                        viewModel.loginOperativeLocal(handle, passcode) { _, msg ->
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "login_operative_local_btn"
-                )
             }
         },
         confirmButton = {

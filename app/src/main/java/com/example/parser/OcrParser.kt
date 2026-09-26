@@ -70,12 +70,14 @@ object OcrParser {
             fun extractLevel(appName: String, altNames: List<String> = emptyList()): Int {
                 val allPatterns = listOf(appName) + altNames
                 for (pat in allPatterns) {
-                    val regex = Regex("""$pat\s*(?:lvl|level|v|\:)?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
+                    val regex = Regex("""(?i)\b${Regex.escape(pat)}\b[^\n\r]*?(?:LVL|Lvl|Level|v|#)?\s*[:#\-]?\s*(\d+)""")
                     val m = regex.find(rawText)
                     if (m != null) {
                         val lvl = m.groupValues[1].toIntOrNull() ?: 0
-                        logs.add("[APP_INDEX] Found $appName -> Level $lvl")
-                        return lvl
+                        if (lvl > 0) {
+                            logs.add("[APP_INDEX] Found $appName -> Level $lvl")
+                            return lvl
+                        }
                     }
                 }
                 return 0

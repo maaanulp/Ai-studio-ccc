@@ -107,9 +107,9 @@ fun MainScreen(viewModel: IntelViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Crypt0 Cr3w Central [CCC]",
+                            text = "Crypt0 Cr3w Central [CCC] [by m0lt0rn]",
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MatrixGreenPrimary
                         )

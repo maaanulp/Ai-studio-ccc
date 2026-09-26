@@ -1,0 +1,10 @@
+{
+  "name": "Crypt0 Cr3w Central",
+  "short_name": "CCC",
+  "description": "Crypt0 Cr3w Central - Cyber log parser, intelligence database, and operational analytics.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#00FF66",
+  "orientation": "portrait"
+}
