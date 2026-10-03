@@ -43,6 +43,8 @@ data class TargetEntity(
     val keygenLvl: Int = 0,
     val siphonLvl: Int = 0,
     val appsParsed: Boolean = false,
+    val rebootTag: String = "",       // "R1", "R2", "R3", "R4", "R5", "R6" or ""
+    val ocrPhotoTimestamp: Long = 0L,  // Photo timestamp from EXIF metadata
     val notes: String = ""
 )
 

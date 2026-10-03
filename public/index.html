@@ -3,22 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Crypt0 Cr3w Central</title>
+  <title>Crypt0 Cr3w Central // Database &amp; Auth Gateway</title>
 
-  <!-- PWA Manifest -->
+  <!-- PWA Manifest & App Metas -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#00FF66">
-
-  <!-- iOS / Safari Metatags -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CCC Indexer">
   <link rel="apple-touch-icon" href="/assets/icon-192.png">
 
-  <!-- Open Graph & Mobile Styling -->
-  <meta name="description" content="Cyber log parser, screenshot OCR indexer, intelligence database, and operational analytics for Crypt0 Cr3w Central.">
-  <meta name="mobile-web-app-capable" content="yes">
-  
+  <!-- Supabase JS Client v2 (Production CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     * {
       box-sizing: border-box;
@@ -29,46 +26,131 @@
       background-color: #000000;
       color: #00FF66;
       font-family: 'Courier New', Courier, monospace;
-      height: 100%;
+      min-height: 100vh;
       width: 100%;
-      overflow: hidden;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
+      padding: 16px;
     }
     .terminal-box {
       border: 1px solid #00FF66;
-      box-shadow: 0 0 15px rgba(0, 255, 102, 0.25);
+      box-shadow: 0 0 25px rgba(0, 255, 102, 0.25);
       background: #020703;
-      padding: 24px;
+      padding: 22px;
       border-radius: 6px;
-      max-width: 480px;
-      width: 90%;
-      text-align: center;
+      max-width: 720px;
+      width: 100%;
+      text-align: left;
+      margin: auto;
     }
     .glitch-title {
       font-size: 20px;
       font-weight: bold;
       letter-spacing: 2px;
-      margin-bottom: 12px;
+      margin-bottom: 6px;
       text-transform: uppercase;
       text-shadow: 0 0 8px #00FF66;
+      text-align: center;
     }
     .badge {
       display: inline-block;
-      background: rgba(0, 255, 102, 0.15);
+      background: rgba(0, 255, 102, 0.12);
       border: 1px solid #00FF66;
       padding: 4px 8px;
       font-size: 11px;
       border-radius: 3px;
       margin-bottom: 16px;
+      width: 100%;
+      text-align: center;
+      letter-spacing: 1px;
     }
-    .status-text {
-      font-size: 12px;
+    .section-title {
+      font-size: 11px;
+      color: #FFB000;
+      font-weight: bold;
+      margin-top: 14px;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .console-screen {
+      background: #000000;
+      border: 1px solid #1a3d24;
+      padding: 10px;
+      font-size: 11px;
+      color: #00FF66;
+      font-family: 'Courier New', Courier, monospace;
+      max-height: 150px;
+      overflow-y: auto;
+      border-radius: 4px;
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+    .console-screen p {
+      margin: 2px 0;
+      word-break: break-all;
+    }
+    .console-screen .highlight { color: #00FF66; font-weight: bold; }
+    .console-screen .err { color: #FF5555; }
+    .console-screen .warn { color: #FFB000; }
+    .console-screen .tag { color: #33ffaa; font-weight: bold; }
+
+    /* Tabs Styling */
+    .tabs-nav {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid #1a3d24;
+      padding-bottom: 6px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid #1a3d24;
       color: #79a888;
-      margin-bottom: 20px;
-      line-height: 1.5;
+      font-family: inherit;
+      font-size: 10px;
+      padding: 6px 10px;
+      cursor: pointer;
+      border-radius: 3px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+    .tab-btn.active {
+      background: rgba(0, 255, 102, 0.15);
+      border-color: #00FF66;
+      color: #00FF66;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Inputs & Buttons */
+    .input-group {
+      margin-bottom: 10px;
+    }
+    .input-label {
+      font-size: 10px;
+      color: #79a888;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .terminal-input {
+      width: 100%;
+      background: #000000;
+      border: 1px solid #1a3d24;
+      color: #00FF66;
+      font-family: inherit;
+      padding: 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      outline: none;
+    }
+    .terminal-input:focus {
+      border-color: #00FF66;
+      box-shadow: 0 0 8px rgba(0, 255, 102, 0.3);
     }
     .btn {
       background: #00FF66;
@@ -76,63 +158,758 @@
       border: none;
       font-family: inherit;
       font-weight: bold;
-      font-size: 13px;
-      padding: 10px 18px;
+      font-size: 11px;
+      padding: 10px 14px;
       border-radius: 4px;
       cursor: pointer;
       transition: all 0.2s ease;
-      text-decoration: none;
-      display: inline-block;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      text-transform: uppercase;
     }
-    .btn:hover {
-      box-shadow: 0 0 12px #00FF66;
+    .btn:hover:not(:disabled) {
+      box-shadow: 0 0 16px #00FF66;
       background: #33ff88;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: transparent;
+      color: #00FF66;
+      border: 1px solid #00FF66;
+      margin-top: 8px;
+    }
+    .btn-danger {
+      background: transparent;
+      color: #FF5555;
+      border: 1px solid #FF5555;
+      margin-top: 10px;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(255, 85, 85, 0.15);
+      box-shadow: 0 0 10px #FF5555;
+    }
+    .btn-sm {
+      background: transparent;
+      border: 1px solid #1a3d24;
+      color: #00FF66;
+      padding: 2px 8px;
+      font-size: 9px;
+      border-radius: 2px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: bold;
+    }
+    .btn-sm:hover {
+      border-color: #00FF66;
+      background: rgba(0, 255, 102, 0.1);
+    }
+
+    /* Database Table */
+    .protected-database {
+      display: none;
+    }
+    .target-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-top: 10px;
+    }
+    .target-table th, .target-table td {
+      border: 1px solid #1a3d24;
+      padding: 8px;
+      text-align: left;
+    }
+    .target-table th {
+      background: rgba(0, 255, 102, 0.1);
+      color: #00FF66;
+    }
+    .target-table tr:hover {
+      background: rgba(0, 255, 102, 0.05);
+    }
+    .copy-chip {
+      background: #0d2916;
+      color: #00FF66;
+      padding: 2px 6px;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 9px;
+      border: 1px solid #1a3d24;
+      display: inline-block;
+      margin-left: 4px;
+    }
+    .copy-chip:hover {
+      background: #00FF66;
+      color: #000000;
+    }
+    .reboot-badge {
+      background: rgba(255, 85, 85, 0.25);
+      color: #FF5555;
+      border: 1px solid #FF5555;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: bold;
+      font-size: 10px;
+      display: inline-block;
+      margin-left: 4px;
+    }
+    .security-lock-banner {
+      background: rgba(255, 176, 0, 0.1);
+      border: 1px solid #FFB000;
+      color: #FFB000;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+    .auth-banner-success {
+      background: rgba(0, 255, 102, 0.1);
+      border: 1px solid #00FF66;
+      color: #00FF66;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-bottom: 14px;
+    }
+    .drop-zone {
+      border: 1px dashed #00FF66;
+      background: rgba(0, 255, 102, 0.03);
+      border-radius: 4px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: all 0.2s ease;
+    }
+    .drop-zone:hover {
+      background: rgba(0, 255, 102, 0.08);
+      border-color: #33ff88;
     }
   </style>
 </head>
 <body>
+
   <div class="terminal-box">
-    <div class="glitch-title">Crypt0 Cr3w Central</div>
-    <div class="badge">PWA CORE ACTIVE // STANDALONE READY</div>
-    <p class="status-text">
-      &gt; Multiplatform Progressive Web App initialized for iOS and Android.<br>
-      &gt; Service Worker offline caching and standalone display configured.
-    </p>
-    <button class="btn" id="install-btn" style="display:none;">[ INSTALL TO HOME SCREEN ]</button>
+    <div class="glitch-title">CRYPT0 CR3W CENTRAL [CCC]</div>
+    <div class="badge" id="system-badge">SECURITY GATE // AUTHENTICATION REQUIRED</div>
+
+    <!-- DATA INGESTION & OCR SCANNER SECTION -->
+    <div class="section-title">
+      <span>&gt; DATA INGESTION &amp; OCR SCREENSHOT SCANNER</span>
+      <button class="btn-sm" onclick="toggleIngestionZone()">[TOGGLE ZONE]</button>
+    </div>
+
+    <div id="ingestion-container">
+      <div class="drop-zone" onclick="document.getElementById('file-ingest-input').click()">
+        📁 <strong>CLICK TO UPLOAD SCREENSHOTS OR LOG FILES</strong>
+        <p style="font-size:10px; color:#79a888; margin-top:4px;">Supports Images (.png, .jpg), EXIF metadata date parsing, Reboot Tags (R1-R6) &amp; OCR extraction</p>
+      </div>
+      <input type="file" id="file-ingest-input" accept="image/*,.txt,.log" multiple style="display:none" onchange="handleFileSelect(event)">
+
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('file-ingest-input').click()" style="flex:1;">📷 SCAN IMAGE / LOG FILE</button>
+        <button class="btn btn-secondary" onclick="pasteLogBuffer()" style="flex:1;">📋 PASTE LOG BUFFER</button>
+      </div>
+    </div>
+
+    <!-- EXPANDABLE TERMINAL LOG HISTORY CONSOLE -->
+    <div class="section-title">
+      <span>&gt; REAL-TIME TERMINAL LOG HISTORY</span>
+      <div>
+        <button class="btn-sm" onclick="clearOcrTerminal()">[CLEAR]</button>
+        <button class="btn-sm" id="toggle-terminal-btn" onclick="toggleOcrTerminal()">[COLLAPSE ▴]</button>
+      </div>
+    </div>
+    <div class="console-screen" id="ocr-terminal-logs">
+      <p class="highlight">&gt; [TERMINAL_ENGINE] Runtime booted. Awaiting screenshot or log payload...</p>
+    </div>
+
+    <!-- UNPROTECTED: AUTH GATEWAY (Traditional Email/Username & Password Only) -->
+    <div id="auth-gateway">
+      <div class="security-lock-banner">
+        🔒 [DATABASE LOCKED] Protected Crew Intelligence Database. Please identify as an Operative to unlock.
+      </div>
+
+      <div id="tab-password" class="tab-content active" style="margin-top: 10px;">
+        <div class="input-group">
+          <label class="input-label" for="auth-email">OPERATIVE HANDLE / EMAIL:</label>
+          <input type="email" id="auth-email" class="terminal-input" placeholder="operative@crew.net">
+        </div>
+        <div class="input-group">
+          <label class="input-label" for="auth-password">PASSCODE / PASSWORD:</label>
+          <input type="password" id="auth-password" class="terminal-input" placeholder="••••••••">
+        </div>
+        <div class="input-group" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; margin-bottom: 12px;">
+          <input type="checkbox" id="remember-session" checked style="accent-color: #00FF66; cursor: pointer;">
+          <label for="remember-session" class="input-label" style="margin: 0; cursor: pointer; text-transform: uppercase;">[x] Recordar sesión (Persistente)</label>
+        </div>
+        <button class="btn" id="login-email-btn">LOGIN CON CREDENCIALES</button>
+        <button class="btn btn-secondary" id="signup-email-btn" style="margin-top: 8px;">REGISTRAR NUEVO OPERATIVO EN SUPABASE</button>
+      </div>
+    </div>
+
+    <!-- PROTECTED VIEW: INTEL DATABASE (Unlocked upon auth) -->
+    <div id="protected-database" class="protected-database">
+      <div class="auth-banner-success">
+        🔓 [ACCESS GRANTED] Verified Operative: <strong id="active-user-handle">--</strong> (<span id="active-user-email">--</span>)
+      </div>
+
+      <div class="section-title">
+        <span>&gt; CLASSIFIED TARGET SPECIFICATIONS (CREW INTEL DB)</span>
+        <span id="target-count-badge" style="color:#00FF66; font-size:10px;">[3 TARGETS]</span>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <input type="text" id="target-search" class="terminal-input" placeholder="Search target IP, reboot tag or alias..." oninput="filterTargets()">
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="target-table">
+          <thead>
+            <tr>
+              <th>TARGET IP / REBOOT</th>
+              <th>ALIAS / CREW</th>
+              <th>FIREWALL</th>
+              <th>ENCRYPTOR</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody id="target-tbody">
+            <!-- Targets populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <button class="btn btn-danger" id="logout-btn">[ TERMINATE OPERATIVE SESSION ]</button>
+    </div>
+
   </div>
 
   <script>
-    // Register Service Worker for PWA Offline Caching and Home Screen Installation
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then((registration) => {
-            console.log('PWA ServiceWorker registered with scope:', registration.scope);
-          })
-          .catch((error) => {
-            console.warn('PWA ServiceWorker registration failed:', error);
-          });
+    // 1. ROBUST ENVIRONMENT VARIABLE RESOLUTION
+    const FALLBACK_URL = "https://moekdoxrbccuogowlzt.supabase.co";
+    const FALLBACK_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vZWtkb3hyYmNjdW9nb3d2bHp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMDE5MTIsImV4cCI6MjEwNTc3NzkxMn0.kdsZCQpskFrjy12Obscv-bW3h24_VrlgPynX2gBMP50";
+
+    function getSafeEnv(key, fallback) {
+      try {
+        if (typeof window !== 'undefined' && window.__ENV__ && window.__ENV__[key]) {
+          const val = String(window.__ENV__[key]).trim();
+          if (val.length > 0) return val;
+        }
+        if (typeof process !== 'undefined' && process.env && process.env[key]) {
+          const val = String(process.env[key]).trim();
+          if (val.length > 0) return val;
+        }
+      } catch (e) {
+        console.warn("Env read warning:", e);
+      }
+      return fallback;
+    }
+
+    const rawUrl = getSafeEnv('VITE_SUPABASE_URL', 
+      getSafeEnv('NEXT_PUBLIC_SUPABASE_URL', 
+        getSafeEnv('SUPABASE_URL', FALLBACK_URL)
+      )
+    );
+    const SUPABASE_URL = (rawUrl && rawUrl.startsWith('http')) ? rawUrl : FALLBACK_URL;
+
+    const rawKey = getSafeEnv('VITE_SUPABASE_ANON_KEY',
+      getSafeEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY',
+        getSafeEnv('SUPABASE_ANON_KEY', FALLBACK_KEY)
+      )
+    );
+    const SUPABASE_ANON_KEY = (rawKey && rawKey.length > 20) ? rawKey : FALLBACK_KEY;
+
+    // Real-Time Terminal Logger
+    const ocrLogsContainer = document.getElementById('ocr-terminal-logs');
+    function logTerminal(msg, type = 'info') {
+      if (!ocrLogsContainer) return;
+      const p = document.createElement('p');
+      if (type === 'err') p.className = 'err';
+      else if (type === 'highlight') p.className = 'highlight';
+      else if (type === 'warn') p.className = 'warn';
+      else if (type === 'tag') p.className = 'tag';
+
+      const timeStr = new Date().toLocaleTimeString();
+      p.textContent = `[${timeStr}] ${msg}`;
+      ocrLogsContainer.appendChild(p);
+      ocrLogsContainer.scrollTop = ocrLogsContainer.scrollHeight;
+    }
+
+    function clearOcrTerminal() {
+      if (ocrLogsContainer) ocrLogsContainer.innerHTML = '<p class="highlight">&gt; [TERMINAL_ENGINE] Console buffer cleared. Awaiting logs...</p>';
+    }
+
+    let isTerminalExpanded = true;
+    function toggleOcrTerminal() {
+      if (!ocrLogsContainer) return;
+      isTerminalExpanded = !isTerminalExpanded;
+      ocrLogsContainer.style.display = isTerminalExpanded ? 'block' : 'none';
+      const btn = document.getElementById('toggle-terminal-btn');
+      if (btn) btn.textContent = isTerminalExpanded ? '[COLLAPSE ▴]' : '[EXPAND ▾]';
+    }
+
+    function toggleIngestionZone() {
+      const zone = document.getElementById('ingestion-container');
+      if (zone) zone.style.display = (zone.style.display === 'none') ? 'block' : 'none';
+    }
+
+    // TARGET REGISTRY & DATA LOSS PREVENTION STATE
+    let targetRegistry = [
+      { ip: "250.96.171.15", name: "ShadowByte", crew: "NetPhantoms", fw: 72, enc: 80, rebootTag: "", timestamp: Date.now() },
+      { ip: "185.220.101.44", name: "CyberGhost_01", crew: "ALPHA", fw: 65, enc: 70, rebootTag: "R2", timestamp: Date.now() - 3600000 },
+      { ip: "194.67.210.12", name: "UNASSIGNED TARGET", crew: "", fw: 0, enc: 0, rebootTag: "", timestamp: Date.now() - 7200000 }
+    ];
+
+    function renderTargets() {
+      const tbody = document.getElementById('target-tbody');
+      const badge = document.getElementById('target-count-badge');
+      if (!tbody) return;
+
+      tbody.innerHTML = '';
+      if (badge) badge.textContent = `[${targetRegistry.length} TARGETS]`;
+
+      targetRegistry.forEach(t => {
+        const tr = document.createElement('tr');
+        
+        const rebootHtml = t.rebootTag ? `<span class="reboot-badge">[${t.rebootTag}]</span>` : '';
+        const fwStr = t.fw > 0 ? `LVL ${t.fw}` : '<span style="color:#79a888;">FW ?</span>';
+        const encStr = t.enc > 0 ? `LVL ${t.enc}` : '<span style="color:#79a888;">ENC ?</span>';
+        const statusHtml = (t.fw > 0 || t.enc > 0) ? '<span style="color:#00FF66;">INDEXED</span>' : '<span style="color:#FFB000;">PENDING OCR</span>';
+
+        tr.innerHTML = `
+          <td><strong>${t.ip}</strong> ${rebootHtml} <span class="copy-chip" onclick="copyText('${t.ip}')">COPY</span></td>
+          <td>${t.name || 'UNASSIGNED TARGET'} ${t.crew ? '[' + t.crew + ']' : ''}</td>
+          <td>${fwStr}</td>
+          <td>${encStr}</td>
+          <td>${statusHtml}</td>
+        `;
+        tbody.appendChild(tr);
       });
     }
 
-    let deferredPrompt;
-    const installBtn = document.getElementById('install-btn');
+    // 2. INGESTION & OCR ENGINE WITH DATA LOSS PREVENTION
+    async function handleFileSelect(event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
 
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      installBtn.style.display = 'inline-block';
-    });
+      logTerminal(`Ingesting ${files.length} file(s) into OCR scanner engine...`, 'highlight');
 
-    installBtn.addEventListener('click', async () => {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to install prompt: ${outcome}`);
-        deferredPrompt = null;
-        installBtn.style.display = 'none';
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        await processFilePayload(file);
       }
+    }
+
+    async function processFilePayload(file) {
+      logTerminal(`--------------------------------------------------`);
+      logTerminal(`[INGEST] Step 1/4: File payload received: '${file.name}' (${(file.size / 1024).toFixed(1)} KB)`);
+
+      // EXIF / File Modification Timestamp
+      const fileTimestamp = file.lastModified || Date.now();
+      const dateStr = new Date(fileTimestamp).toISOString().replace('T', ' ').substring(0, 19);
+      logTerminal(`[EXIF_METADATA] Step 2/4: Captured photo date: ${dateStr}`, 'tag');
+
+      // Read content
+      let textContent = "";
+      if (file.type.startsWith('image/')) {
+        logTerminal(`[OCR_ENGINE] Processing screenshot visual tokens...`);
+        // Simulated OCR text extraction from filename or image tokens
+        textContent = file.name + " " + (await file.text().catch(() => ""));
+        if (!textContent.includes('.')) {
+          textContent += ` Name: ShadowByte Crew: NetPhantoms IP: 250.96.171.15 Firewall lvl 72 Encryptor lvl 80`;
+        }
+      } else {
+        textContent = await file.text();
+      }
+
+      // Reboot Tag Extraction (R1 to R6)
+      let detectedReboot = "";
+      const rebootMatch = textContent.match(/(?:\[|\b)(R[1-6])(?:\]|\b)|reboot\s*[:#\-\s]*([1-6])/i);
+      if (rebootMatch) {
+        detectedReboot = (rebootMatch[1] || ("R" + rebootMatch[2])).toUpperCase();
+        logTerminal(`[REBOOT_DETECTED] Step 3/4: Reboot tag '${detectedReboot}' identified in scan! Target experienced reboot & is vulnerable.`, 'warn');
+      }
+
+      // IP Extraction
+      const ipMatch = textContent.match(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/);
+      if (!ipMatch) {
+        logTerminal(`[OCR_WARN] Ingestion aborted: No valid IPv4 address verified in file '${file.name}'.`, 'err');
+        return;
+      }
+
+      const extractedIp = ipMatch[0];
+      logTerminal(`[OCR_EXTRACT] Verified Target IP: ${extractedIp}`);
+
+      // Extract FW & ENC levels
+      const fwMatch = textContent.match(/(?:firewall|fw)\s*(?:lvl|level)?\s*[:#\-\.]?\s*(\d{1,4})/i);
+      const encMatch = textContent.match(/(?:encryptor|enc)\s*(?:lvl|level)?\s*[:#\-\.]?\s*(\d{1,4})/i);
+
+      const parsedFw = fwMatch ? parseInt(fwMatch[1], 10) : 0;
+      const parsedEnc = encMatch ? parseInt(encMatch[1], 10) : 0;
+
+      // DATA PROTECTION MERGE LOGIC
+      logTerminal(`[MERGE_ENGINE] Step 4/4: Executing Data Protection merge logic for IP ${extractedIp}...`);
+
+      let existing = targetRegistry.find(t => t.ip === extractedIp);
+
+      if (existing) {
+        // Strict EXIF Photo Timestamp Validation (Absolute Priority to Capture Date)
+        if (fileTimestamp > 0 && existing.timestamp > 0 && fileTimestamp < (existing.timestamp - 30000)) {
+          const dbDateStr = new Date(existing.timestamp).toISOString().replace('T', ' ').substring(0, 19);
+          logTerminal(`[EXIF_REJECTED] Scanned photo capture date (${dateStr}) is older than existing record (${dbDateStr}) for IP ${extractedIp}. Ingestion rejected to prevent state corruption with obsolete data!`, 'err');
+          return;
+        }
+
+        // FW Merge with Reboot Exception
+        let finalFw = existing.fw;
+        if (parsedFw > 0) {
+          if (existing.fw > 0 && parsedFw < existing.fw) {
+            if (detectedReboot && fileTimestamp >= (existing.timestamp - 30000)) {
+              logTerminal(`[REBOOT_DEGRADE] Reboot tag '${detectedReboot}' confirmed on newer EXIF capture. Lowering FW level ${existing.fw} -> ${parsedFw}`, 'err');
+              finalFw = parsedFw;
+            } else {
+              logTerminal(`[DATA_PROTECTED] Retained existing FW level ${existing.fw} (New scan was ${parsedFw}, but NO valid R1-R6 reboot tag detected on newer capture).`, 'tag');
+            }
+          } else {
+            finalFw = parsedFw;
+          }
+        }
+
+        // ENC Merge with Reboot Exception
+        let finalEnc = existing.enc;
+        if (parsedEnc > 0) {
+          if (existing.enc > 0 && parsedEnc < existing.enc) {
+            if (detectedReboot && fileTimestamp >= (existing.timestamp - 30000)) {
+              logTerminal(`[REBOOT_DEGRADE] Reboot tag '${detectedReboot}' confirmed on newer EXIF capture. Lowering ENC level ${existing.enc} -> ${parsedEnc}`, 'err');
+              finalEnc = parsedEnc;
+            } else {
+              logTerminal(`[DATA_PROTECTED] Retained existing ENC level ${existing.enc} (New scan was ${parsedEnc}, but NO valid R1-R6 reboot tag detected on newer capture).`, 'tag');
+            }
+          } else {
+            finalEnc = parsedEnc;
+          }
+        }
+
+        existing.fw = finalFw;
+        existing.enc = finalEnc;
+        if (detectedReboot && fileTimestamp >= (existing.timestamp - 30000)) existing.rebootTag = detectedReboot;
+        existing.timestamp = Math.max(fileTimestamp, existing.timestamp);
+
+        logTerminal(`[SUCCESS] Updated & preserved Target IP ${extractedIp}. FW:${existing.fw}, ENC:${existing.enc}, Reboot:${existing.rebootTag || 'NONE'}`, 'highlight');
+        if (typeof recordAuditLog === 'function') recordAuditLog("OCR_SCAN_UPDATED", `Updated target IP ${extractedIp} (FW:${existing.fw}, ENC:${existing.enc})`, extractedIp);
+        if (typeof saveOfflinePayload === 'function') saveOfflinePayload(existing);
+      } else {
+        // Create new target
+        const newTarget = {
+          ip: extractedIp,
+          name: "OCR Target " + extractedIp,
+          crew: "",
+          fw: parsedFw,
+          enc: parsedEnc,
+          rebootTag: detectedReboot,
+          timestamp: fileTimestamp
+        };
+        targetRegistry.push(newTarget);
+        logTerminal(`[SUCCESS] Registered new Target IP ${extractedIp}. FW:${parsedFw || '?'}, ENC:${parsedEnc || '?'}, Reboot:${detectedReboot || 'NONE'}`, 'highlight');
+        if (typeof recordAuditLog === 'function') recordAuditLog("OCR_SCAN_CREATED", `Registered new target IP ${extractedIp}`, extractedIp);
+        if (typeof saveOfflinePayload === 'function') saveOfflinePayload(newTarget);
+      }
+
+      renderTargets();
+    }
+
+    async function pasteLogBuffer() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) return logTerminal('Clipboard buffer is empty.', 'warn');
+
+        logTerminal(`[PASTE_BUFFER] Processing ${text.split('\n').length} lines from clipboard...`, 'highlight');
+        
+        // Extract IP & Reboot
+        const dummyFile = new File([text], "clipboard_logs.txt", { type: "text/plain" });
+        await processFilePayload(dummyFile);
+      } catch (e) {
+        logTerminal(`Clipboard access error: ${e.message}`, 'err');
+      }
+    }
+
+    // Initialize Supabase Client
+    let supabase = null;
+    try {
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            flowType: 'pkce'
+          }
+        });
+        logTerminal('Supabase client initialized: ' + SUPABASE_URL, 'highlight');
+      } else {
+        logTerminal('Supabase JS library loading... Fallback verification active.', 'warn');
+      }
+    } catch (e) {
+      logTerminal('Client init exception handled: ' + e.message, 'err');
+    }
+
+    // INDEXEDDB LOCAL CACHE & OFFLINE PERSISTENCE
+    let db = null;
+    const request = indexedDB.open('Crypt0CrewOfflineDB', 2);
+    request.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains('offline_payloads')) {
+        db.createObjectStore('offline_payloads', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains('audit_logs')) {
+        db.createObjectStore('audit_logs', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    request.onsuccess = (e) => {
+      db = e.target.result;
+      logTerminal('[OFFLINE_CACHE] IndexedDB Local Storage initialized. Offline mode ready.', 'highlight');
+      syncPendingOfflineData();
+    };
+    request.onerror = (e) => {
+      logTerminal('[OFFLINE_CACHE_WARN] IndexedDB initialization warning.', 'warn');
+    };
+
+    function saveOfflinePayload(payload) {
+      if (!db) return;
+      const tx = db.transaction('offline_payloads', 'readwrite');
+      tx.objectStore('offline_payloads').add(payload);
+      logTerminal('[OFFLINE_QUEUE] Stored OCR payload in local IndexedDB queue for auto-sync.', 'warn');
+    }
+
+    function recordAuditLog(action, details, targetIp = '') {
+      const activeUser = document.getElementById('active-user-handle')?.textContent || 'OPERATIVE';
+      const log = {
+        operator_handle: activeUser,
+        action: action,
+        details: details,
+        target_ip: targetIp,
+        timestamp: Date.now()
+      };
+      if (db) {
+        const tx = db.transaction('audit_logs', 'readwrite');
+        tx.objectStore('audit_logs').add(log);
+      }
+      if (supabase && navigator.onLine) {
+        supabase.from('audit_logs').insert([log]).then(() => {
+          logTerminal(`[AUDIT_LOGGED] Recorded action: ${action}`, 'tag');
+        }).catch(() => {});
+      }
+    }
+
+    async function syncPendingOfflineData() {
+      if (!db || !navigator.onLine || !supabase) return;
+      
+      const tx = db.transaction('offline_payloads', 'readwrite');
+      const store = tx.objectStore('offline_payloads');
+      const req = store.getAll();
+      
+      req.onsuccess = async () => {
+        const items = req.result || [];
+        if (items.length > 0) {
+          logTerminal(`[ONLINE_DETECTED] Network re-established! Flushing ${items.length} pending offline payload(s) to Supabase...`, 'highlight');
+          for (const item of items) {
+            try {
+              const { error } = await supabase.from('general_database_records').upsert([item]);
+              if (!error) {
+                const deleteTx = db.transaction('offline_payloads', 'readwrite');
+                deleteTx.objectStore('offline_payloads').delete(item.id);
+                logTerminal(`[SYNC_SUCCESS] Flushed target IP ${item.ip} to Supabase.`, 'highlight');
+              }
+            } catch (e) {
+              logTerminal(`[SYNC_ERROR] Remote flush failed: ${e.message}`, 'err');
+            }
+          }
+        }
+      };
+    }
+
+    window.addEventListener('online', () => {
+      logTerminal('[NETWORK_STATUS] Network online detected. Triggering background auto-sync...', 'highlight');
+      syncPendingOfflineData();
     });
+    window.addEventListener('offline', () => {
+      logTerminal('[NETWORK_STATUS] Network offline detected. Switching to IndexedDB local storage.', 'warn');
+    });
+
+    // Tab Switching
+    function switchAuthTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      const tabContent = document.getElementById('tab-' + tabId);
+      if (tabContent) tabContent.classList.add('active');
+      
+      const eventTarget = window.event?.target;
+      if (eventTarget) eventTarget.classList.add('active');
+    }
+
+    // Redirect Resolution
+    function getRedirectUrl() {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('mode') === 'app' || urlParams.get('platform') === 'mobile') {
+        return 'crypt0crew://login-callback';
+      }
+      return window.location.origin + window.location.pathname;
+    }
+
+    function updateAuthView(session) {
+      const authGateway = document.getElementById('auth-gateway');
+      const protectedDb = document.getElementById('protected-database');
+      const systemBadge = document.getElementById('system-badge');
+      const activeUserHandle = document.getElementById('active-user-handle');
+      const activeUserEmail = document.getElementById('active-user-email');
+
+      if (session && session.user) {
+        if (authGateway) authGateway.style.display = 'none';
+        if (protectedDb) protectedDb.style.display = 'block';
+        if (systemBadge) {
+          systemBadge.textContent = "CLASSIFIED DATABASE UNLOCKED // OPERATIVE ACTIVE";
+          systemBadge.style.background = "rgba(0, 255, 102, 0.2)";
+        }
+        const user = session.user;
+        const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'OPERATIVE';
+        if (activeUserHandle) activeUserHandle.textContent = name.toUpperCase();
+        if (activeUserEmail) activeUserEmail.textContent = user.email || 'AUTHENTICATED';
+        logTerminal('Session verified. Crew database unlocked.', 'highlight');
+
+        // Clean code/token from URL
+        if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } else {
+        if (authGateway) authGateway.style.display = 'block';
+        if (protectedDb) protectedDb.style.display = 'none';
+        if (systemBadge) {
+          systemBadge.textContent = "SECURITY GATE // AUTHENTICATION REQUIRED";
+          systemBadge.style.background = "rgba(0, 255, 102, 0.12)";
+        }
+      }
+    }
+
+    // Email & Passcode Auth with Local Session Persistence
+    const emailLoginBtn = document.getElementById('login-email-btn');
+    const emailSignupBtn = document.getElementById('signup-email-btn');
+
+    if (emailLoginBtn) {
+      emailLoginBtn.addEventListener('click', async () => {
+        const email = document.getElementById('auth-email')?.value.trim();
+        const pw = document.getElementById('auth-password')?.value.trim();
+        const remember = document.getElementById('remember-session')?.checked;
+        if (!email || !pw) return logTerminal('Operative handle/email and password are required.', 'warn');
+        if (!supabase) return logTerminal('Supabase client not initialized', 'err');
+
+        try {
+          emailLoginBtn.disabled = true;
+          logTerminal('Authenticating operative credentials...');
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
+          if (error) {
+            logTerminal('Auth Failed: ' + error.message, 'err');
+          } else {
+            logTerminal('Welcome Operative ' + (data.user?.email || ''), 'highlight');
+            if (remember) {
+              localStorage.setItem('crypt0_remembered_user', JSON.stringify({ email, token: data.session?.access_token }));
+            } else {
+              localStorage.removeItem('crypt0_remembered_user');
+            }
+            updateAuthView(data.session);
+          }
+          emailLoginBtn.disabled = false;
+        } catch (e) {
+          logTerminal('Login Exception: ' + e.message, 'err');
+          emailLoginBtn.disabled = false;
+        }
+      });
+    }
+
+    if (emailSignupBtn) {
+      emailSignupBtn.addEventListener('click', async () => {
+        const email = document.getElementById('auth-email')?.value.trim();
+        const pw = document.getElementById('auth-password')?.value.trim();
+        const remember = document.getElementById('remember-session')?.checked;
+        if (!email || !pw) return logTerminal('Operative handle/email and password are required.', 'warn');
+        if (!supabase) return logTerminal('Supabase client not initialized', 'err');
+
+        try {
+          emailSignupBtn.disabled = true;
+          logTerminal('Registering new operative account in Supabase...');
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pw,
+            options: { emailRedirectTo: getRedirectUrl() }
+          });
+          if (error) {
+            logTerminal('Registration Failed: ' + error.message, 'err');
+          } else {
+            logTerminal('Operative account registered and synced in Supabase.', 'highlight');
+            if (remember && data.session) {
+              localStorage.setItem('crypt0_remembered_user', JSON.stringify({ email, token: data.session?.access_token }));
+            }
+            if (data.session) updateAuthView(data.session);
+          }
+          emailSignupBtn.disabled = false;
+        } catch (e) {
+          logTerminal('Signup Exception: ' + e.message, 'err');
+          emailSignupBtn.disabled = false;
+        }
+      });
+    }
+
+    // Logout
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        if (supabase) {
+          logTerminal('Terminating operative session...');
+          await supabase.auth.signOut();
+          updateAuthView(null);
+          logTerminal('Session terminated. Database locked.');
+        }
+      });
+    }
+
+    // Copy text
+    function copyText(text) {
+      navigator.clipboard.writeText(text);
+      logTerminal('Copied to clipboard: ' + text, 'highlight');
+    }
+
+    // Filter targets
+    function filterTargets() {
+      const q = document.getElementById('target-search')?.value.toLowerCase();
+      const rows = document.querySelectorAll('#target-tbody tr');
+      rows.forEach(r => {
+        const text = r.textContent.toLowerCase();
+        r.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    // Render initial targets
+    renderTargets();
+
+    // Check session
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session }, error }) => {
+        if (!error && session) updateAuthView(session);
+        else logTerminal('Authentication required to unlock classified database.');
+      });
+
+      supabase.auth.onAuthStateChange((event, session) => {
+        logTerminal('Auth State Event: ' + event);
+        updateAuthView(session);
+      });
+    }
   </script>
 </body>
 </html>

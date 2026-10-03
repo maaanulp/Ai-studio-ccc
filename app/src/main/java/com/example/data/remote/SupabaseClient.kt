@@ -85,18 +85,83 @@ object SupabaseClient {
         }
     }
 
-    // Base URL & Anon Key from BuildConfig (via .env/Secrets plugin) or runtime overrides
-    var activeSupabaseUrl: String = try {
-        BuildConfig.SUPABASE_URL.ifBlank { "https://your-supabase-project.supabase.co" }
-    } catch (_: Exception) {
-        "https://your-supabase-project.supabase.co"
+    const val DEFAULT_SUPABASE_URL = "https://moekdoxrbccuogowlzt.supabase.co"
+    const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vZWtkb3hyYmNjdW9nb3d2bHp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMDE5MTIsImV4cCI6MjEwNTc3NzkxMn0.kdsZCQpskFrjy12Obscv-bW3h24_VrlgPynX2gBMP50"
+    const val MOBILE_REDIRECT_URL = "crypt0crew://login-callback"
+    const val WEB_REDIRECT_URL = "https://ais-dev-qllenx5svx7ozgsuznbnoq-2680413064.europe-west2.run.app"
+
+    fun sanitizeUrl(raw: String): String {
+        val trimmed = raw.trim()
+        val regex = Regex("""https://[a-zA-Z0-9-]+\.supabase\.co""")
+        val match = regex.find(trimmed)
+        if (match != null) {
+            return match.value
+        }
+        val clean = trimmed.substringBefore("/rest").substringBefore("/auth").trimEnd('/')
+        return if (clean.startsWith("http://") || clean.startsWith("https://")) clean else DEFAULT_SUPABASE_URL
     }
 
-    var activeAnonKey: String = try {
-        BuildConfig.SUPABASE_ANON_KEY.ifBlank { "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder" }
-    } catch (_: Exception) {
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder"
+    /**
+     * Explicit initializer for Supabase client configuration.
+     * Ensures both the verified URL and public anonKey are registered.
+     */
+    fun createClient(supabaseUrl: String = DEFAULT_SUPABASE_URL, anonKey: String = DEFAULT_ANON_KEY) {
+        activeSupabaseUrl = sanitizeUrl(supabaseUrl.ifBlank { DEFAULT_SUPABASE_URL })
+        activeAnonKey = anonKey.trim().ifBlank { DEFAULT_ANON_KEY }
+        Log.i(TAG, "createClient configured with URL: $activeSupabaseUrl and anonKey: ${activeAnonKey.take(15)}...")
     }
+
+    data class SupabaseUser(
+        val id: String,
+        val email: String,
+        val fullName: String,
+        val avatarUrl: String
+    )
+
+    suspend fun fetchUserFromAccessToken(accessToken: String): SupabaseUser? = withContext(Dispatchers.IO) {
+        if (accessToken.isBlank()) return@withContext null
+        try {
+            val url = "${activeSupabaseUrl.trimEnd('/')}/auth/v1/user"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", activeAnonKey)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string().orEmpty()
+                val json = JSONObject(body)
+                val id = json.optString("id", "")
+                val email = json.optString("email", "")
+                val userMetadata = json.optJSONObject("user_metadata")
+                val fallbackName = userMetadata?.optString("name", "").orEmpty()
+                val fullName = userMetadata?.optString("full_name", fallbackName).orEmpty()
+                val fallbackAvatar = userMetadata?.optString("picture", "").orEmpty()
+                val avatarUrl = userMetadata?.optString("avatar_url", fallbackAvatar).orEmpty()
+                SupabaseUser(id = id, email = email, fullName = fullName, avatarUrl = avatarUrl)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch user from access token: ${e.message}", e)
+            null
+        }
+    }
+
+    // Base URL & Anon Key from BuildConfig (via .env/Secrets plugin) or runtime overrides
+    var activeSupabaseUrl: String = sanitizeUrl(
+        try {
+            BuildConfig.SUPABASE_URL.ifBlank { DEFAULT_SUPABASE_URL }
+        } catch (_: Exception) {
+            DEFAULT_SUPABASE_URL
+        }
+    )
+
+    var activeAnonKey: String = try {
+        BuildConfig.SUPABASE_ANON_KEY.ifBlank { DEFAULT_ANON_KEY }
+    } catch (_: Exception) {
+        DEFAULT_ANON_KEY
+    }.trim()
 
     fun isRemoteConfigured(): Boolean {
         return activeSupabaseUrl.startsWith("http") &&
@@ -523,27 +588,83 @@ object SupabaseClient {
     }
 
     /**
-     * Purge general records in Supabase:
-     * DELETE /rest/v1/general_database_records?crew=eq.<crewId>
+     * Insert audit log entry to Supabase `audit_logs` table
+     */
+    suspend fun insertAuditLogRemote(
+        operatorHandle: String,
+        action: String,
+        details: String,
+        targetIp: String = "",
+        crewId: String = "CCC"
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isRemoteConfigured()) return@withContext true
+        try {
+            val json = JSONObject().apply {
+                put("operator_handle", operatorHandle.ifBlank { "UNASSIGNED" })
+                put("action", action)
+                put("details", details)
+                put("target_ip", targetIp)
+                put("crew_id", crewId.ifBlank { "CCC" })
+                put("created_at", System.currentTimeMillis())
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$activeSupabaseUrl/rest/v1/audit_logs")
+                .addHeader("apikey", activeAnonKey)
+                .addHeader("Authorization", "Bearer $activeAnonKey")
+                .addHeader("Content-Type", "application/json")
+                .post(json.toRequestBody(jsonMediaType))
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code == 201 || response.code == 204
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Audit log remote sync failed, queued locally: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Complete Reset & Purge of test tables in Supabase:
+     * DELETE /rest/v1/general_database_records
+     * DELETE /rest/v1/intel_targets
+     * DELETE /rest/v1/logs_activity
+     * DELETE /rest/v1/ocr_results
+     * DELETE /rest/v1/audit_logs
      */
     suspend fun purgeGeneralRecords(crewId: String): Boolean = withContext(Dispatchers.IO) {
         if (!isRemoteConfigured()) return@withContext true
 
-        try {
-            val request = Request.Builder()
-                .url("$activeSupabaseUrl/rest/v1/general_database_records?crew=eq.$crewId")
-                .addHeader("apikey", activeAnonKey)
-                .addHeader("Authorization", "Bearer $activeAnonKey")
-                .delete()
-                .build()
+        var allSuccess = true
+        val tables = listOf("general_database_records", "intel_targets", "logs_activity", "ocr_results", "feed_posts", "audit_logs")
 
-            httpClient.newCall(request).execute().use { response ->
-                return@withContext response.isSuccessful || response.code == 204
+        for (table in tables) {
+            try {
+                val url = if (table == "general_database_records" || table == "intel_targets" || table == "logs_activity") {
+                    "$activeSupabaseUrl/rest/v1/$table?crew_id=neq.XYZ_PRESERVE"
+                } else {
+                    "$activeSupabaseUrl/rest/v1/$table?id=gte.0"
+                }
+
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("apikey", activeAnonKey)
+                    .addHeader("Authorization", "Bearer $activeAnonKey")
+                    .delete()
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful && response.code != 204) {
+                        allSuccess = false
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Purge table $table remote failed: ${e.message}")
+                allSuccess = false
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Purge remote records failed: ${e.message}")
-            false
         }
+        allSuccess
     }
 
     /**

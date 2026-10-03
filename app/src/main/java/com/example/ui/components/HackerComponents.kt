@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.MatrixBorder
 import com.example.ui.theme.MatrixBorderBright
 import com.example.ui.theme.MatrixDarkBackground
@@ -451,4 +452,129 @@ fun HackerSearchField(
             .fillMaxWidth()
             .testTag(testTag)
     )
+}
+
+@Composable
+fun RebootBadge(
+    rebootTag: String,
+    modifier: Modifier = Modifier
+) {
+    if (rebootTag.isBlank()) return
+    val cleanTag = rebootTag.trim().uppercase()
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(CyberAmber.copy(alpha = 0.2f))
+            .border(BorderStroke(1.dp, CyberAmber), RoundedCornerShape(3.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = "[$cleanTag REBOOT]",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = CyberAmber
+        )
+    }
+}
+
+@Composable
+fun ExpandableTerminalLogConsole(
+    logs: List<String>,
+    modifier: Modifier = Modifier,
+    title: String = "REAL-TIME INGESTION TERMINAL",
+    initialExpanded: Boolean = true
+) {
+    var expanded by remember { mutableStateOf(initialExpanded) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty()) {
+            listState.animateScrollToItem(logs.size - 1)
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(MatrixDarkBackground)
+            .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(6.dp))
+    ) {
+        // Expandable Header Button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .background(MatrixDarkSurfaceVariant)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (logs.isNotEmpty()) MatrixGreenGlow else MatrixTextMuted)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "> $title (${logs.size} LINES)",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MatrixGreenPrimary
+                )
+            }
+            Text(
+                text = if (expanded) "[-] COLLAPSE" else "[+] EXPAND",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = MatrixGreenGlow
+            )
+        }
+
+        AnimatedVisibility(visible = expanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .background(MatrixDarkBackground)
+                    .padding(8.dp)
+            ) {
+                if (logs.isEmpty()) {
+                    Text(
+                        text = "> Awaiting data ingestion stream...",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        color = MatrixTextMuted,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(logs) { logLine ->
+                            val color = when {
+                                logLine.contains("[ERROR]") || logLine.contains("[DISCARD]") || logLine.contains("[EXIF_DISCARD]") -> PurgeRedText
+                                logLine.contains("[WARN]") || logLine.contains("[REBOOT]") || logLine.contains("[REBOOT_DEGRADE]") -> CyberAmber
+                                logLine.contains("[SUCCESS]") || logLine.contains("[DATABASE]") || logLine.contains("[OCR_SUMMARY]") -> MatrixGreenGlow
+                                else -> MatrixGreenPrimary
+                            }
+                            Text(
+                                text = logLine,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                color = color,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

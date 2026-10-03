@@ -19,7 +19,7 @@ interface TargetDao {
     @Query("SELECT * FROM targets WHERE scope = :scope AND ip = :ip LIMIT 1")
     suspend fun getTargetByIpAndScope(ip: String, scope: DatabaseScope): TargetEntity?
 
-    @Query("SELECT * FROM targets WHERE scope = :scope AND name = :name LIMIT 1")
+    @Query("SELECT * FROM targets WHERE scope = :scope AND LOWER(TRIM(name)) = LOWER(TRIM(:name)) LIMIT 1")
     suspend fun getTargetByNameAndScope(name: String, scope: DatabaseScope): TargetEntity?
 
     @Query("SELECT * FROM targets WHERE ip = :ip LIMIT 1")

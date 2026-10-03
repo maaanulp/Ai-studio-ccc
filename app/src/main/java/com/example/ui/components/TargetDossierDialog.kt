@@ -15,14 +15,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -33,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -43,7 +39,6 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.TargetEntity
 import com.example.ui.theme.MatrixBorder
 import com.example.ui.theme.MatrixBorderBright
-import com.example.ui.theme.MatrixDarkBackground
 import com.example.ui.theme.MatrixDarkSurface
 import com.example.ui.theme.MatrixDarkSurfaceVariant
 import com.example.ui.theme.MatrixGreenDim
@@ -55,10 +50,9 @@ import com.example.ui.theme.MatrixTextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TargetDossierDialog(
+fun TargetSpecsDialog(
     target: TargetEntity?,
-    onDismiss: () -> Unit,
-    onGenerateReport: ((TargetEntity) -> Unit)? = null
+    onDismiss: () -> Unit
 ) {
     if (target == null) return
     val context = LocalContext.current
@@ -69,6 +63,15 @@ fun TargetDossierDialog(
         Toast.makeText(context, "Copied $label: $text", Toast.LENGTH_SHORT).show()
     }
 
+    val hasValidCustomName = target.name.isNotBlank() &&
+            !target.name.equals(target.ip, ignoreCase = true) &&
+            !target.name.equals("Target-${target.ip}", ignoreCase = true) &&
+            !target.name.equals("Host-${target.ip}", ignoreCase = true) &&
+            !target.name.startsWith("Pending_IP_") &&
+            !target.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+
+    val displayName = if (hasValidCustomName) target.name else "UNASSIGNED TARGET"
+
     BasicAlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier
@@ -77,14 +80,14 @@ fun TargetDossierDialog(
             .background(MatrixDarkSurface)
             .border(BorderStroke(1.5.dp, MatrixBorderBright), RoundedCornerShape(8.dp))
             .padding(14.dp)
-            .testTag("target_dossier_dialog")
+            .testTag("target_specs_dialog")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
         ) {
-            // Header
+            // Header: TARGET SPECS
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -92,19 +95,41 @@ fun TargetDossierDialog(
             ) {
                 Column {
                     Text(
-                        text = "DOSSIER // TARGET INTEL",
+                        text = "TARGET SPECS // INTEL SPECIFICATIONS",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         color = MatrixGreenDim,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = target.ip,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MatrixGreenPrimary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "${target.ip} [$displayName]",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MatrixGreenPrimary
+                        )
+                        if (target.rebootTag.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(com.example.ui.theme.PurgeRed.copy(alpha = 0.2f))
+                                    .border(BorderStroke(1.dp, com.example.ui.theme.PurgeRed), RoundedCornerShape(3.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "[${target.rebootTag.uppercase()}] REBOOT",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = com.example.ui.theme.PurgeRedText
+                                )
+                            }
+                        }
+                    }
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(
@@ -124,20 +149,22 @@ fun TargetDossierDialog(
                 HackerButton(
                     text = "[COPY IP]",
                     onClick = { copyToClipboard("IP", target.ip) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    testTag = "specs_copy_ip_btn"
                 )
-                if (target.wallet.isNotBlank()) {
+                if (target.wallet.isNotBlank() && target.wallet != "N/A" && target.wallet != "Unknown") {
                     HackerButton(
                         text = "[COPY WALLET]",
                         onClick = { copyToClipboard("Wallet", target.wallet) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        testTag = "specs_copy_wallet_btn"
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Section: Target Profile
+            // Section 1: Target Account Metrics (Indexed By / Contributor located here)
             Text(
                 text = "1. TARGET ACCOUNT METRICS",
                 fontFamily = FontFamily.Monospace,
@@ -149,9 +176,10 @@ fun TargetDossierDialog(
 
             InfoGrid(
                 items = listOf(
-                    "Name" to target.name.ifBlank { "Unidentified" },
+                    "Name" to displayName,
+                    "Indexed By" to target.contributor.ifBlank { "You" },
                     "Crew" to target.crew.ifBlank { "None / Lone" },
-                    "Level" to target.level.toString(),
+                    "Level" to if (target.level > 0) "LVL ${target.level}" else "N/A",
                     "Reputation" to target.rep.toString(),
                     "Score" to if (target.score > 0) target.score.toString() else "N/A",
                     "Database" to target.scope.name
@@ -160,7 +188,7 @@ fun TargetDossierDialog(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Section: Defenses
+            // Section 2: Defense & Security Specs (Unverified FW ? / ENC ? with dim gray color)
             Text(
                 text = "2. DEFENSE & SECURITY SPECS",
                 fontFamily = FontFamily.Monospace,
@@ -171,16 +199,15 @@ fun TargetDossierDialog(
             Spacer(modifier = Modifier.height(6.dp))
             InfoGrid(
                 items = listOf(
-                    "Firewall (FW)" to "LVL ${target.fw}",
-                    "Encryptor (ENC)" to "LVL ${target.enc}",
-                    "Contributor" to target.contributor,
+                    "Firewall (FW)" to if (target.fw > 0) "LVL ${target.fw}" else "FW ? (UNVERIFIED)",
+                    "Encryptor (ENC)" to if (target.enc > 0) "LVL ${target.enc}" else "ENC ? (UNVERIFIED)",
                     "Wallet" to target.wallet.ifBlank { "Unknown" }
                 )
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Section: Financial Performance
+            // Section 3: Financial & Raid Stats
             Text(
                 text = "3. FINANCIAL & RAID STATS",
                 fontFamily = FontFamily.Monospace,
@@ -195,13 +222,13 @@ fun TargetDossierDialog(
                     "Total Hits" to target.hitCount.toString(),
                     "Avg / Hit" to "${target.avgPerHit} Crypto",
                     "CR / Hour" to "~${target.crPerHour} CR/h",
-                    "Peak Attack Hour" to target.peakHour
+                    "Peak Attack Hour" to target.peakHour.ifBlank { "21:00" }
                 )
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Section: Software & Apps Matrix
+            // Section 4: Software & Apps Matrix
             Text(
                 text = "4. INSTALLED APPS / SOFTWARE MATRIX",
                 fontFamily = FontFamily.Monospace,
@@ -262,24 +289,25 @@ fun TargetDossierDialog(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
+
             HackerButton(
-                text = "[GENERATE & SAVE INTEL REPORT (ROOM)]",
-                onClick = {
-                    onGenerateReport?.invoke(target)
-                    Toast.makeText(context, "Intel Report saved to Room DB!", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("generate_intel_report_button")
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            HackerButton(
-                text = "[DISMISS DOSSIER]",
+                text = "[DISMISS TARGET SPECS]",
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                testTag = "dismiss_target_specs_btn"
             )
         }
     }
+}
+
+// Backward-compatible alias
+@Composable
+fun TargetDossierDialog(
+    target: TargetEntity?,
+    onDismiss: () -> Unit,
+    onGenerateReport: ((TargetEntity) -> Unit)? = null
+) {
+    TargetSpecsDialog(target = target, onDismiss = onDismiss)
 }
 
 @Composable
@@ -293,6 +321,7 @@ private fun InfoGrid(items: List<Pair<String, String>>) {
             .padding(8.dp)
     ) {
         items.forEach { (label, value) ->
+            val isUnverified = value.contains("UNVERIFIED") || value.contains("?") || value == "N/A" || value == "Unknown"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -310,7 +339,7 @@ private fun InfoGrid(items: List<Pair<String, String>>) {
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MatrixGreenPrimary
+                    color = if (isUnverified) MatrixTextMuted else MatrixGreenPrimary
                 )
             }
         }

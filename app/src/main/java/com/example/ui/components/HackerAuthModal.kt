@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -22,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -48,10 +52,10 @@ fun HackerAuthModal(
 ) {
     val context = LocalContext.current
     val currentProfile by viewModel.currentProfile.collectAsState()
-    val linkedGoogleHandle = viewModel.getLinkedGoogleHandle()
 
-    var operativeInput by remember { mutableStateOf(currentProfile.ifBlank { linkedGoogleHandle }) }
+    var operativeInput by remember { mutableStateOf(currentProfile) }
     var passcode by remember { mutableStateOf("") }
+    var rememberSession by remember { mutableStateOf(true) }
     var inputError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -64,14 +68,14 @@ fun HackerAuthModal(
         title = {
             Column {
                 Text(
-                    text = "> OPERATIVE IDENTITY & PROFILE SETUP",
+                    text = "> ACCESO Y REGISTRO DE OPERATIVO",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = MatrixGreenPrimary
                 )
                 Text(
-                    text = "Unified Authentication & Google OAuth Account Linking",
+                    text = "Autenticación segura por Usuario y Contraseña // Sincronización Supabase",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     color = MatrixTextMuted
@@ -83,9 +87,9 @@ fun HackerAuthModal(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (linkedGoogleHandle.isNotBlank()) {
+                if (currentProfile.isNotBlank() && !currentProfile.equals("Unassigned", ignoreCase = true)) {
                     Text(
-                        text = "• LINKED GOOGLE OAUTH HANDLE: [$linkedGoogleHandle]",
+                        text = "• OPERATIVO ACTIVO: [$currentProfile]",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -93,52 +97,17 @@ fun HackerAuthModal(
                     )
                 }
 
-                // Section 1: Google OAuth
-                Text(
-                    text = "[GOOGLE OAUTH ACCESS]",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CyberAmber
-                )
-
-                HackerButton(
-                    text = "[G] CONTINUE WITH GOOGLE OAUTH",
-                    onClick = {
-                        val handle = operativeInput.trim()
-                        viewModel.authenticateOAuth("Google", handle) { success, msg ->
-                            if (!success && msg == "PROMPT_HANDLE_REQUIRED") {
-                                inputError = "First-time Google OAuth access: Enter your Operative Handle below to link your account permanently."
-                            } else {
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                if (success) onDismiss()
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTag = "oauth_google_btn"
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    text = "──────── LOCAL IDENTITY (HANDLE & PASSCODE) ────────",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 8.sp,
-                    color = MatrixTextMuted
-                )
-
-                // Mandatory Operative Handle Field
+                // Usuario / Operativo Handle Input
                 OutlinedTextField(
                     value = operativeInput,
                     onValueChange = {
                         operativeInput = it
                         if (it.isNotBlank()) inputError = null
                     },
-                    label = { Text("OPERATIVE HANDLE (ALIAS) *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                    label = { Text("USUARIO / OPERADOR *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
                     placeholder = {
                         Text(
-                            "Enter unique handle (e.g. CyberGhost_88)",
+                            "Nombre de usuario (ej. Operador_01)",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             color = MatrixTextMuted
@@ -158,14 +127,14 @@ fun HackerAuthModal(
                         .testTag("operative_handle_input")
                 )
 
-                // Mandatory Passcode Field for Local Authentication
+                // Contraseña / Password Input
                 OutlinedTextField(
                     value = passcode,
                     onValueChange = {
                         passcode = it
                         if (it.isNotBlank()) inputError = null
                     },
-                    label = { Text("PASSCODE / PASSWORD *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                    label = { Text("CONTRASEÑA *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
                     placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
@@ -181,6 +150,32 @@ fun HackerAuthModal(
                         .testTag("operative_passcode_input")
                 )
 
+                // "Recordar sesión" Checkbox Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { rememberSession = !rememberSession }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = rememberSession,
+                        onCheckedChange = { rememberSession = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MatrixGreenPrimary,
+                            uncheckedColor = MatrixBorder,
+                            checkmarkColor = MatrixDarkBackground
+                        )
+                    )
+                    Text(
+                        text = "Recordar sesión (Manener acceso activo)",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MatrixGreenPrimary
+                    )
+                }
+
                 inputError?.let { err ->
                     Text(
                         text = "[!] $err",
@@ -195,19 +190,19 @@ fun HackerAuthModal(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     HackerButton(
-                        text = "[ESTABLISH LOCAL IDENTITY]",
+                        text = "[INICIAR SESIÓN]",
                         onClick = {
                             val handle = operativeInput.trim()
                             val pw = passcode.trim()
                             if (handle.isBlank()) {
-                                inputError = "OPERATIVE HANDLE is required."
+                                inputError = "El campo USUARIO es obligatorio."
                                 return@HackerButton
                             }
                             if (pw.isBlank()) {
-                                inputError = "PASSCODE / PASSWORD is required for local identity."
+                                inputError = "La CONTRASEÑA es obligatoria."
                                 return@HackerButton
                             }
-                            viewModel.loginOperativeLocal(handle, pw) { success, msg ->
+                            viewModel.loginOperativeLocal(handle, pw, rememberSession = rememberSession) { success, msg ->
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                 if (success) onDismiss()
                                 else inputError = msg
@@ -217,26 +212,29 @@ fun HackerAuthModal(
                         testTag = "login_operative_local_btn"
                     )
 
-                    if (operativeInput.isNotBlank()) {
-                        HackerButton(
-                            text = "[LINK GOOGLE OAUTH]",
-                            onClick = {
-                                val handle = operativeInput.trim()
-                                viewModel.linkGoogleOAuthToHandle(handle) { success, msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    if (success) onDismiss()
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            testTag = "link_google_oauth_btn"
-                        )
-                    }
+                    HackerButton(
+                        text = "[REGISTRAR M0LTON]",
+                        onClick = {
+                            val handle = operativeInput.trim()
+                            val pw = passcode.trim()
+                            if (handle.isBlank() || pw.isBlank()) {
+                                inputError = "Usuario y contraseña requeridos para registro."
+                                return@HackerButton
+                            }
+                            viewModel.loginOperativeLocal(handle, pw, rememberSession = rememberSession) { success, msg ->
+                                Toast.makeText(context, "Operador $handle registrado y sincronizado en Supabase.", Toast.LENGTH_SHORT).show()
+                                if (success) onDismiss()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        testTag = "register_operative_local_btn"
+                    )
                 }
             }
         },
         confirmButton = {
             HackerButton(
-                text = "DISMISS",
+                text = "CERRAR",
                 onClick = onDismiss
             )
         }

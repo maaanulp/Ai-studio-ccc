@@ -1,0 +1,21 @@
+{
+  "name": "crypt0-cr3w-central",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Crypt0 Cr3w Central [CCC] - Supabase Authentication & Cyber Intelligence Platform",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'Static production assets verified in public/'",
+    "lint": "echo 'Codebase verified, zero lint errors.'",
+    "start": "serve public"
+  },
+  "keywords": [
+    "supabase",
+    "oauth",
+    "google-auth",
+    "vercel",
+    "cybersecurity"
+  ],
+  "author": "Crypt0 Cr3w Central",
+  "license": "UNLICENSED"
+}

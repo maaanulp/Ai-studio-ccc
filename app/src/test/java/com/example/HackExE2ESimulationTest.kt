@@ -286,14 +286,18 @@ class HackExE2ESimulationTest {
         repository.insertOrUpdateTarget(target1)
         repository.insertOrUpdateTarget(target2)
 
-        val opStats = viewModel.operativeRankStats.first()
+        val opStats = viewModel.operativeRankStats.first { list ->
+            list.any { it.handle == "m0lt0rn" && it.totalPts >= 70L }
+        }
         assertTrue("Operative rankings should not be empty", opStats.isNotEmpty())
 
         val moltornStats = opStats.find { it.handle == "m0lt0rn" }
         assertNotNull("m0lt0rn should exist in rankings", moltornStats)
         assertTrue("m0lt0rn score should reflect target contribution points", moltornStats!!.totalPts >= 70L)
 
-        val crewStats = viewModel.crewRankStats.first()
+        val crewStats = viewModel.crewRankStats.first { list ->
+            list.any { it.crewId == "CCC" }
+        }
         assertTrue("Crew rankings should not be empty", crewStats.isNotEmpty())
         val cccCrew = crewStats.find { it.crewId == "CCC" }
         assertNotNull("CCC crew should exist in crew rankings", cccCrew)

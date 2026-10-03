@@ -21,6 +21,7 @@ data class ParseResult(
 
 object LogParser {
 
+    private val STRICT_IP_REGEX = Regex("""\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b""")
     private val TIMESTAMP_REGEX = Regex("""\[(\d{1,2}-\d{1,2}\s+(\d{1,2}):(\d{2}))\]""")
     private val ACCESS_REGEX = Regex("""Accessed device at\s+([\w\.\*:]+)""", RegexOption.IGNORE_CASE)
     private val STOLE_REGEX = Regex("""Stole\s+([0-9,]+)\s+Crypto from\s+([\w\.\-]+)""", RegexOption.IGNORE_CASE)
@@ -42,7 +43,7 @@ object LogParser {
             val accessMatch = ACCESS_REGEX.find(line)
             if (accessMatch != null) {
                 val ip = accessMatch.groupValues[1].trim()
-                if (ip.contains("xxx", ignoreCase = true) || ip.contains("***")) {
+                if (ip.contains("xxx", ignoreCase = true) || ip.contains("***") || !STRICT_IP_REGEX.matches(ip)) {
                     ignoredMasked++
                     usedIndices[i] = true
                     continue
@@ -135,10 +136,10 @@ object LogParser {
             targetEntities.add(
                 TargetEntity(
                     ip = ip,
-                    name = "Target-$ip",
-                    level = 1,
-                    fw = 1,
-                    enc = 1,
+                    name = "",
+                    level = 0,
+                    fw = 0,
+                    enc = 0,
                     rep = 0,
                     score = 0L,
                     crew = "",

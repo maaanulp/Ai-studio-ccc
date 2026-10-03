@@ -316,6 +316,23 @@ fun ScreenshotScannerScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "REAL-TIME LOG INGESTION TERMINAL",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MatrixGreenDim
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            TerminalLogConsole(
+                logs = state.terminalLogs,
+                crewName = crewId,
+                maxHeight = 160,
+                initiallyExpanded = true
+            )
         } else {
             // OCR Screenshot UI
             Row(

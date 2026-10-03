@@ -22,9 +22,10 @@ import com.example.data.model.TargetEntity
         LogEntryEntity::class,
         OcrTextResultEntity::class,
         FeedPostEntity::class,
-        FeedCommentEntity::class
+        FeedCommentEntity::class,
+        com.example.data.model.AuditLogEntity::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun logEntryDao(): LogEntryDao
     abstract fun ocrTextResultDao(): OcrTextResultDao
     abstract fun feedDao(): FeedDao
+    abstract fun auditLogDao(): AuditLogDao
 
     companion object {
         @Volatile

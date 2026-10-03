@@ -50,7 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.MatrixRainCanvas
-import com.example.ui.components.TargetDossierDialog
+import com.example.ui.components.TargetSpecsDialog
 import com.example.ui.components.HackerAuthModal
 import com.example.ui.components.HackerButton
 import com.example.ui.theme.MatrixBorder
@@ -283,11 +283,10 @@ fun MainScreen(viewModel: IntelViewModel) {
             }
         }
 
-        // Target Intel Dossier Modal / Dialog (when clicked anywhere)
-        TargetDossierDialog(
+        // Target Specs Intel Modal / Dialog (when clicked anywhere)
+        TargetSpecsDialog(
             target = selectedTarget,
-            onDismiss = { viewModel.selectTargetForDossier(null) },
-            onGenerateReport = { target -> viewModel.generateAndSaveIntelligenceReport(target) }
+            onDismiss = { viewModel.selectTargetForDossier(null) }
         )
 
         // Hacker Crew Authentication Modal

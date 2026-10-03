@@ -117,6 +117,7 @@ fun IntelligenceDatabaseScreen(
 
     val context = LocalContext.current
     var showAdminPurgeDialog by remember { mutableStateOf(false) }
+    var showAuditLogModal by remember { mutableStateOf(false) }
     var adminPasswordAttempt by remember { mutableStateOf("") }
     var showOperativeAuthBlock by remember { mutableStateOf(false) }
     var operativeRoleSelection by remember { mutableStateOf("OPERATIVE") }
@@ -829,8 +830,14 @@ fun IntelligenceDatabaseScreen(
                             if (isCurrentUserAdmin) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    HackerButton(
+                                        text = "🔍 AUDITORÍA DE OPERADORES",
+                                        onClick = { showAuditLogModal = true },
+                                        testTag = "audit_logs_btn"
+                                    )
                                     RedPurgeButton(
                                         text = "purge general data base [admin]",
                                         onPurgeConfirmed = { showAdminPurgeDialog = true },
@@ -929,6 +936,13 @@ fun IntelligenceDatabaseScreen(
                     Text("[CANCEL]", fontFamily = FontFamily.Monospace, color = MatrixGreenPrimary)
                 }
             }
+        )
+    }
+
+    if (showAuditLogModal) {
+        com.example.ui.components.AuditLogModal(
+            viewModel = viewModel,
+            onDismiss = { showAuditLogModal = false }
         )
     }
 }
@@ -1094,6 +1108,17 @@ private fun ExpandableTargetRow(
     var isExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
+    val hasValidCustomName = target.name.isNotBlank() &&
+            !target.name.equals(target.ip, ignoreCase = true) &&
+            !target.name.equals("Target-${target.ip}", ignoreCase = true) &&
+            !target.name.equals("Host-${target.ip}", ignoreCase = true) &&
+            !target.name.startsWith("Pending_IP_") &&
+            !target.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+
+    val displayName = if (hasValidCustomName) target.name else "UNASSIGNED TARGET"
+    val isFwVerified = target.fw > 0
+    val isEncVerified = target.enc > 0
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1110,7 +1135,7 @@ private fun ExpandableTargetRow(
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Main Top Row: IP + Name | FW + ENC + Chevron
+            // Main Top Row: IP + [Name / UNASSIGNED TARGET] | FW + ENC + Chevron
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1146,7 +1171,7 @@ private fun ExpandableTargetRow(
                         modifier = Modifier
                             .size(7.dp)
                             .clip(CircleShape)
-                            .background(MatrixGreenGlow)
+                            .background(if (target.rebootTag.isNotBlank()) PurgeRed else MatrixGreenGlow)
                     )
                     Text(
                         text = target.ip,
@@ -1155,20 +1180,35 @@ private fun ExpandableTargetRow(
                         fontWeight = FontWeight.Bold,
                         color = MatrixGreenPrimary
                     )
-                    if (target.name.isNotBlank()) {
-                        Text(
-                            text = "[${target.name}]",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MatrixTextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    if (target.rebootTag.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(PurgeRed.copy(alpha = 0.2f))
+                                .border(BorderStroke(1.dp, PurgeRed), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "[${target.rebootTag.uppercase()}]",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PurgeRedText
+                            )
+                        }
                     }
+                    Text(
+                        text = "[$displayName]",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (hasValidCustomName) MatrixGreenDim else MatrixTextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
-                // FW & ENC Badges + Chevron
+                // FW & ENC Badges (Gray ? if unverified) + Chevron
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1177,15 +1217,15 @@ private fun ExpandableTargetRow(
                         modifier = Modifier
                             .clip(RoundedCornerShape(3.dp))
                             .background(MatrixDarkSurfaceVariant)
-                            .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(3.dp))
+                            .border(BorderStroke(1.dp, if (isFwVerified) MatrixGreenDim else MatrixBorder), RoundedCornerShape(3.dp))
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "FW ${target.fw}",
+                            text = if (isFwVerified) "FW ${target.fw}" else "FW ?",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MatrixGreenPrimary
+                            color = if (isFwVerified) MatrixGreenPrimary else MatrixTextMuted
                         )
                     }
 
@@ -1197,11 +1237,11 @@ private fun ExpandableTargetRow(
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "ENC ${target.enc}",
+                            text = if (isEncVerified) "ENC ${target.enc}" else "ENC ?",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MatrixTextPrimary
+                            color = if (isEncVerified) MatrixTextPrimary else MatrixTextMuted
                         )
                     }
 
@@ -1255,7 +1295,7 @@ private fun ExpandableTargetRow(
                 )
             }
 
-            // Expandable details section
+            // Expandable details section - Focused Quick Actions & High Priority Intel
             AnimatedVisibility(visible = isExpanded) {
                 Column(
                     modifier = Modifier
@@ -1268,38 +1308,26 @@ private fun ExpandableTargetRow(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    // Secondary Specs: LVL, REP, HITS, SCORE
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        TargetStatChip(label = "LVL", value = target.level.toString(), modifier = Modifier.weight(1f))
-                        TargetStatChip(label = "REP", value = target.rep.toString(), modifier = Modifier.weight(1f))
-                        TargetStatChip(label = "HITS", value = target.hitCount.toString(), modifier = Modifier.weight(1f))
-                        TargetStatChip(label = "SCORE", value = target.score.toString(), modifier = Modifier.weight(1f))
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Loot & Activity Grid
+                    // 1. High Priority Tactical Metrics: AVG Crypto / Hit & Peak Window
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(4.dp))
-                            .background(MatrixDarkSurfaceVariant.copy(alpha = 0.6f))
+                            .background(MatrixDarkSurfaceVariant.copy(alpha = 0.8f))
+                            .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(4.dp))
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
                             Text(
-                                text = "TOTAL STOLEN",
+                                text = "AVG CRYPTO / HIT",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 9.sp,
                                 color = MatrixTextMuted
                             )
                             Text(
-                                text = "${target.stolenCrypto} ₡",
+                                text = "${target.avgPerHit} ₡ / hit",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
@@ -1309,62 +1337,28 @@ private fun ExpandableTargetRow(
 
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                text = "AVG / HIT: ${target.avgPerHit} ₡",
+                                text = "OPTIMAL PEAK WINDOW",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                color = MatrixTextSecondary
+                                fontSize = 9.sp,
+                                color = MatrixTextMuted
                             )
                             Text(
-                                text = "RATE: ~${target.crPerHour} ₡/h | PEAK: ${target.peakHour}",
+                                text = target.peakHour.ifBlank { "21:00" },
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                color = MatrixGreenDim
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberAmber
                             )
                         }
                     }
 
-                    if (target.crew.isNotBlank() && target.crew != "Unknown" && target.crew != "None") {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "CREW AFFILIATION: [${target.crew}]",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            color = MatrixGreenPrimary
-                        )
-                    }
-
-                    if (target.appsParsed) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "APPS INTEL: AV:${target.antivirusLvl} | SPAM:${target.spamLvl} | FW:${target.firewallAppLvl} | PROXY:${target.proxyLvl}",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            color = MatrixTextSecondary
-                        )
-                    } else if (target.notes.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "NOTES: ${target.notes}",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            color = MatrixTextSecondary
-                        )
-                    }
-
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Action buttons
+                    // 2. High-Impact Action Buttons: [COPY IP], [COPY WALLET]
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        HackerButton(
-                            text = "[OPEN FULL DOSSIER]",
-                            onClick = onSelectTarget,
-                            modifier = Modifier.weight(1f),
-                            testTag = "open_dossier_${target.ip}"
-                        )
-
                         HackerButton(
                             text = "[COPY IP]",
                             onClick = {
@@ -1377,10 +1371,61 @@ private fun ExpandableTargetRow(
                                     Toast.makeText(context, "IP: ${target.ip}", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            modifier = Modifier.weight(0.6f),
+                            modifier = Modifier.weight(1f),
                             testTag = "copy_ip_${target.ip}"
                         )
+
+                        if (target.wallet.isNotBlank() && target.wallet != "N/A" && target.wallet != "Unknown") {
+                            HackerButton(
+                                text = "[COPY WALLET]",
+                                onClick = {
+                                    try {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("Target Wallet", target.wallet)
+                                        clipboard?.setPrimaryClip(clip)
+                                        Toast.makeText(context, "Wallet ${target.wallet} copied", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Wallet: ${target.wallet}", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                testTag = "copy_wallet_${target.ip}"
+                            )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Secondary Specs: LVL, REP, HITS, TOTAL STOLEN
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        TargetStatChip(label = "LVL", value = if (target.level > 0) target.level.toString() else "N/A", modifier = Modifier.weight(1f))
+                        TargetStatChip(label = "REP", value = target.rep.toString(), modifier = Modifier.weight(1f))
+                        TargetStatChip(label = "HITS", value = target.hitCount.toString(), modifier = Modifier.weight(1f))
+                        TargetStatChip(label = "TOTAL", value = "${target.stolenCrypto} ₡", modifier = Modifier.weight(1.2f), isHighlighted = true)
+                    }
+
+                    if (target.crew.isNotBlank() && target.crew != "Unknown" && target.crew != "None") {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "CREW AFFILIATION: [${target.crew}]",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            color = MatrixGreenPrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 3. Secondary Detailed Specs Action
+                    HackerButton(
+                        text = "[OPEN TARGET SPECS]",
+                        onClick = onSelectTarget,
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "open_target_specs_${target.ip}"
+                    )
                 }
             }
         }

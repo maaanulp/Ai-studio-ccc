@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Crypt0 Cr3w Central // Database &amp; Auth Gateway</title>
+
+  <!-- PWA Manifest & App Metas -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#00FF66">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CCC Indexer">
+  <link rel="apple-touch-icon" href="/assets/icon-192.png">
+
+  <!-- Supabase JS Client v2 (Production CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body, html {
+      background-color: #000000;
+      color: #00FF66;
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px;
+    }
+    .terminal-box {
+      border: 1px solid #00FF66;
+      box-shadow: 0 0 25px rgba(0, 255, 102, 0.25);
+      background: #020703;
+      padding: 22px;
+      border-radius: 6px;
+      max-width: 640px;
+      width: 100%;
+      text-align: left;
+      margin: auto;
+    }
+    .glitch-title {
+      font-size: 20px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px #00FF66;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(0, 255, 102, 0.12);
+      border: 1px solid #00FF66;
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 3px;
+      margin-bottom: 16px;
+      width: 100%;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    .section-title {
+      font-size: 11px;
+      color: #FFB000;
+      font-weight: bold;
+      margin-top: 14px;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .console-screen {
+      background: #000000;
+      border: 1px solid #1a3d24;
+      padding: 10px;
+      font-size: 11px;
+      color: #79a888;
+      max-height: 120px;
+      overflow-y: auto;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+    .console-screen p {
+      margin: 2px 0;
+      word-break: break-all;
+    }
+    .console-screen .highlight { color: #00FF66; font-weight: bold; }
+    .console-screen .err { color: #FF5555; }
+    .console-screen .warn { color: #FFB000; }
+
+    /* Tabs Styling */
+    .tabs-nav {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid #1a3d24;
+      padding-bottom: 6px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid #1a3d24;
+      color: #79a888;
+      font-family: inherit;
+      font-size: 10px;
+      padding: 6px 10px;
+      cursor: pointer;
+      border-radius: 3px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+    .tab-btn.active {
+      background: rgba(0, 255, 102, 0.15);
+      border-color: #00FF66;
+      color: #00FF66;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Inputs & Buttons */
+    .input-group {
+      margin-bottom: 10px;
+    }
+    .input-label {
+      font-size: 10px;
+      color: #79a888;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .terminal-input {
+      width: 100%;
+      background: #000000;
+      border: 1px solid #1a3d24;
+      color: #00FF66;
+      font-family: inherit;
+      padding: 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      outline: none;
+    }
+    .terminal-input:focus {
+      border-color: #00FF66;
+      box-shadow: 0 0 8px rgba(0, 255, 102, 0.3);
+    }
+    .btn {
+      background: #00FF66;
+      color: #000000;
+      border: none;
+      font-family: inherit;
+      font-weight: bold;
+      font-size: 12px;
+      padding: 12px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      text-transform: uppercase;
+    }
+    .btn:hover:not(:disabled) {
+      box-shadow: 0 0 16px #00FF66;
+      background: #33ff88;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: transparent;
+      color: #00FF66;
+      border: 1px solid #00FF66;
+      margin-top: 8px;
+    }
+    .btn-danger {
+      background: transparent;
+      color: #FF5555;
+      border: 1px solid #FF5555;
+      margin-top: 10px;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(255, 85, 85, 0.15);
+      box-shadow: 0 0 10px #FF5555;
+    }
+
+    /* Database View (Protected) */
+    .protected-database {
+      display: none;
+    }
+    .target-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-top: 10px;
+    }
+    .target-table th, .target-table td {
+      border: 1px solid #1a3d24;
+      padding: 8px;
+      text-align: left;
+    }
+    .target-table th {
+      background: rgba(0, 255, 102, 0.1);
+      color: #00FF66;
+    }
+    .target-table tr:hover {
+      background: rgba(0, 255, 102, 0.05);
+    }
+    .copy-chip {
+      background: #0d2916;
+      color: #00FF66;
+      padding: 2px 6px;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 9px;
+      border: 1px solid #1a3d24;
+      display: inline-block;
+      margin-left: 4px;
+    }
+    .copy-chip:hover {
+      background: #00FF66;
+      color: #000000;
+    }
+    .security-lock-banner {
+      background: rgba(255, 176, 0, 0.1);
+      border: 1px solid #FFB000;
+      color: #FFB000;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+    .auth-banner-success {
+      background: rgba(0, 255, 102, 0.1);
+      border: 1px solid #00FF66;
+      color: #00FF66;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="terminal-box">
+    <div class="glitch-title">CRYPT0 CR3W CENTRAL [CCC]</div>
+    <div class="badge" id="system-badge">SECURITY GATE // AUTHENTICATION REQUIRED</div>
+
+    <!-- Live Telemetry Terminal -->
+    <div class="section-title">&gt; TELEMETRY LOGS</div>
+    <div class="console-screen" id="console-logs">
+      <p>&gt; Booting runtime environment...</p>
+    </div>
+
+    <!-- UNPROTECTED: AUTH GATEWAY -->
+    <div id="auth-gateway">
+      <div class="security-lock-banner">
+        🔒 [DATABASE LOCKED] Protected Crew Intelligence Database. Please identify as an Operative to unlock.
+      </div>
+
+      <div class="tabs-nav">
+        <button class="tab-btn active" onclick="switchAuthTab('google')">[1] Google OAuth</button>
+        <button class="tab-btn" onclick="switchAuthTab('magic')">[2] Magic Link</button>
+        <button class="tab-btn" onclick="switchAuthTab('password')">[3] Email / Password</button>
+      </div>
+
+      <!-- Tab 1: Google OAuth -->
+      <div id="tab-google" class="tab-content active">
+        <button class="btn" id="google-auth-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          CONTINUE WITH GOOGLE OAUTH
+        </button>
+      </div>
+
+      <!-- Tab 2: Magic Link (Email OTP) -->
+      <div id="tab-magic" class="tab-content">
+        <div class="input-group">
+          <label class="input-label" for="magic-email">OPERATIVE EMAIL FOR 1-CLICK MAGIC LINK:</label>
+          <input type="email" id="magic-email" class="terminal-input" placeholder="operative@crew.net">
+        </div>
+        <button class="btn" id="magic-link-btn">SEND MAGIC LINK VIA SUPABASE</button>
+      </div>
+
+      <!-- Tab 3: Email / Password -->
+      <div id="tab-password" class="tab-content">
+        <div class="input-group">
+          <label class="input-label" for="auth-email">EMAIL ADDRESS:</label>
+          <input type="email" id="auth-email" class="terminal-input" placeholder="operative@crew.net">
+        </div>
+        <div class="input-group">
+          <label class="input-label" for="auth-password">PASSCODE / PASSWORD:</label>
+          <input type="password" id="auth-password" class="terminal-input" placeholder="••••••••">
+        </div>
+        <button class="btn" id="login-email-btn">LOGIN WITH EMAIL</button>
+        <button class="btn btn-secondary" id="signup-email-btn">REGISTER NEW OPERATIVE</button>
+      </div>
+    </div>
+
+    <!-- PROTECTED VIEW: INTEL DATABASE (Unlocked upon auth) -->
+    <div id="protected-database" class="protected-database">
+      <div class="auth-banner-success">
+        🔓 [ACCESS GRANTED] Verified Operative: <strong id="active-user-handle">--</strong> (<span id="active-user-email">--</span>)
+      </div>
+
+      <div class="section-title">&gt; CLASSIFIED TARGET SPECIFICATIONS (CREW INTEL DB)</div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <input type="text" id="target-search" class="terminal-input" placeholder="Search target IP or alias..." oninput="filterTargets()">
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="target-table">
+          <thead>
+            <tr>
+              <th>TARGET IP</th>
+              <th>ALIAS / CREW</th>
+              <th>FIREWALL</th>
+              <th>ENCRYPTOR</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody id="target-tbody">
+            <tr>
+              <td>250.96.171.15 <span class="copy-chip" onclick="copyText('250.96.171.15')">COPY</span></td>
+              <td>ShadowByte [NetPhantoms]</td>
+              <td>LVL 72</td>
+              <td>LVL 80</td>
+              <td><span style="color:#00FF66;">INDEXED</span></td>
+            </tr>
+            <tr>
+              <td>185.220.101.44 <span class="copy-chip" onclick="copyText('185.220.101.44')">COPY</span></td>
+              <td>CyberGhost_01 [ALPHA]</td>
+              <td>LVL 65</td>
+              <td>LVL 70</td>
+              <td><span style="color:#00FF66;">INDEXED</span></td>
+            </tr>
+            <tr>
+              <td>194.67.210.12 <span class="copy-chip" onclick="copyText('194.67.210.12')">COPY</span></td>
+              <td>UNASSIGNED TARGET</td>
+              <td>FW ?</td>
+              <td>ENC ?</td>
+              <td><span style="color:#FFB000;">PENDING OCR</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <button class="btn btn-danger" id="logout-btn">[ TERMINATE OPERATIVE SESSION ]</button>
+    </div>
+
+  </div>
+
+  <script>
+    // 1. ROBUST NON-NULL ENVIRONMENT VARIABLE RESOLUTION
+    const FALLBACK_URL = "https://moekdoxrbccuogowlzt.supabase.co";
+    const FALLBACK_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vZWtkb3hyYmNjdW9nb3d2bHp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMDE5MTIsImV4cCI6MjEwNTc3NzkxMn0.kdsZCQpskFrjy12Obscv-bW3h24_VrlgPynX2gBMP50";
+
+    function getSafeEnv(key, fallback) {
+      try {
+        if (typeof window !== 'undefined' && window.__ENV__ && window.__ENV__[key]) {
+          const val = String(window.__ENV__[key]).trim();
+          if (val.length > 0) return val;
+        }
+        if (typeof process !== 'undefined' && process.env && process.env[key]) {
+          const val = String(process.env[key]).trim();
+          if (val.length > 0) return val;
+        }
+      } catch (e) {
+        console.warn("Env read warning:", e);
+      }
+      return fallback;
+    }
+
+    const rawUrl = getSafeEnv('VITE_SUPABASE_URL', 
+      getSafeEnv('NEXT_PUBLIC_SUPABASE_URL', 
+        getSafeEnv('SUPABASE_URL', FALLBACK_URL)
+      )
+    );
+    const SUPABASE_URL = (rawUrl && rawUrl.startsWith('http')) ? rawUrl : FALLBACK_URL;
+
+    const rawKey = getSafeEnv('VITE_SUPABASE_ANON_KEY',
+      getSafeEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY',
+        getSafeEnv('SUPABASE_ANON_KEY', FALLBACK_KEY)
+      )
+    );
+    const SUPABASE_ANON_KEY = (rawKey && rawKey.length > 20) ? rawKey : FALLBACK_KEY;
+
+    const consoleLogs = document.getElementById('console-logs');
+    function log(msg, isError = false, isHighlight = false, isWarn = false) {
+      if (!consoleLogs) return;
+      const p = document.createElement('p');
+      if (isError) p.className = 'err';
+      else if (isHighlight) p.className = 'highlight';
+      else if (isWarn) p.className = 'warn';
+      p.textContent = (msg.startsWith('>') ? '' : '> ') + msg;
+      consoleLogs.appendChild(p);
+      consoleLogs.scrollTop = consoleLogs.scrollHeight;
+    }
+
+    // Initialize Supabase Client
+    let supabase = null;
+    try {
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            flowType: 'pkce'
+          }
+        });
+        log('Supabase client initialized: ' + SUPABASE_URL, false, true);
+      } else {
+        log('Supabase JS library loading... Fallback verification active.', false, false, true);
+      }
+    } catch (e) {
+      log('Client init exception handled: ' + e.message, true);
+    }
+
+    // Tab Switching
+    function switchAuthTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      const tabContent = document.getElementById('tab-' + tabId);
+      if (tabContent) tabContent.classList.add('active');
+      
+      const eventTarget = window.event?.target;
+      if (eventTarget) eventTarget.classList.add('active');
+    }
+
+    // Redirect Resolution
+    function getRedirectUrl() {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('mode') === 'app' || urlParams.get('platform') === 'mobile') {
+        return 'crypt0crew://login-callback';
+      }
+      return window.location.origin + window.location.pathname;
+    }
+
+    function updateAuthView(session) {
+      const authGateway = document.getElementById('auth-gateway');
+      const protectedDb = document.getElementById('protected-database');
+      const systemBadge = document.getElementById('system-badge');
+      const activeUserHandle = document.getElementById('active-user-handle');
+      const activeUserEmail = document.getElementById('active-user-email');
+
+      if (session && session.user) {
+        if (authGateway) authGateway.style.display = 'none';
+        if (protectedDb) protectedDb.style.display = 'block';
+        if (systemBadge) {
+          systemBadge.textContent = "CLASSIFIED DATABASE UNLOCKED // OPERATIVE ACTIVE";
+          systemBadge.style.background = "rgba(0, 255, 102, 0.2)";
+        }
+        const user = session.user;
+        const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'OPERATIVE';
+        if (activeUserHandle) activeUserHandle.textContent = name.toUpperCase();
+        if (activeUserEmail) activeUserEmail.textContent = user.email || 'AUTHENTICATED';
+        log('Session verified. Crew database accessible.', false, true);
+
+        // Clean code/token from URL
+        if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } else {
+        if (authGateway) authGateway.style.display = 'block';
+        if (protectedDb) protectedDb.style.display = 'none';
+        if (systemBadge) {
+          systemBadge.textContent = "SECURITY GATE // AUTHENTICATION REQUIRED";
+          systemBadge.style.background = "rgba(0, 255, 102, 0.12)";
+        }
+      }
+    }
+
+    // 1. Google OAuth
+    const googleBtn = document.getElementById('google-auth-btn');
+    if (googleBtn) {
+      googleBtn.addEventListener('click', async () => {
+        if (!supabase) return log('Supabase not ready', true);
+        try {
+          googleBtn.disabled = true;
+          log('Initiating Google OAuth...');
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: getRedirectUrl(),
+              queryParams: { access_type: 'offline', prompt: 'consent' }
+            }
+          });
+          if (error) {
+            log('OAuth Error: ' + error.message, true);
+            googleBtn.disabled = false;
+          } else if (data?.url) {
+            window.location.href = data.url;
+          }
+        } catch (e) {
+          log('OAuth Exception: ' + e.message, true);
+          googleBtn.disabled = false;
+        }
+      });
+    }
+
+    // 2. Magic Link (Email OTP)
+    const magicBtn = document.getElementById('magic-link-btn');
+    if (magicBtn) {
+      magicBtn.addEventListener('click', async () => {
+        const email = document.getElementById('magic-email')?.value.trim();
+        if (!email) return log('Please enter an operative email.', true);
+        if (!supabase) return log('Supabase not ready', true);
+        try {
+          magicBtn.disabled = true;
+          log('Sending 1-click magic link to ' + email + '...');
+          const { error } = await supabase.auth.signInWithOtp({
+            email: email,
+            options: { emailRedirectTo: getRedirectUrl() }
+          });
+          if (error) {
+            log('Magic Link Error: ' + error.message, true);
+          } else {
+            log('Magic Link successfully dispatched! Check your inbox.', false, true);
+          }
+          magicBtn.disabled = false;
+        } catch (e) {
+          log('Magic Link Exception: ' + e.message, true);
+          magicBtn.disabled = false;
+        }
+      });
+    }
+
+    // 3. Email & Password Login / Register
+    const emailLoginBtn = document.getElementById('login-email-btn');
+    const emailSignupBtn = document.getElementById('signup-email-btn');
+
+    if (emailLoginBtn) {
+      emailLoginBtn.addEventListener('click', async () => {
+        const email = document.getElementById('auth-email')?.value.trim();
+        const pw = document.getElementById('auth-password')?.value.trim();
+        if (!email || !pw) return log('Email and Passcode are required.', true);
+        if (!supabase) return log('Supabase not ready', true);
+
+        try {
+          emailLoginBtn.disabled = true;
+          log('Authenticating operative credentials...');
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
+          if (error) {
+            log('Auth Failed: ' + error.message, true);
+          } else {
+            log('Welcome Operative ' + (data.user?.email || ''), false, true);
+            updateAuthView(data.session);
+          }
+          emailLoginBtn.disabled = false;
+        } catch (e) {
+          log('Login Exception: ' + e.message, true);
+          emailLoginBtn.disabled = false;
+        }
+      });
+    }
+
+    if (emailSignupBtn) {
+      emailSignupBtn.addEventListener('click', async () => {
+        const email = document.getElementById('auth-email')?.value.trim();
+        const pw = document.getElementById('auth-password')?.value.trim();
+        if (!email || !pw) return log('Email and Passcode are required.', true);
+        if (!supabase) return log('Supabase not ready', true);
+
+        try {
+          emailSignupBtn.disabled = true;
+          log('Registering new operative account in Supabase...');
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pw,
+            options: { emailRedirectTo: getRedirectUrl() }
+          });
+          if (error) {
+            log('Registration Failed: ' + error.message, true);
+          } else {
+            log('Operative account registered. Check email for confirmation if required.', false, true);
+            if (data.session) updateAuthView(data.session);
+          }
+          emailSignupBtn.disabled = false;
+        } catch (e) {
+          log('Signup Exception: ' + e.message, true);
+          emailSignupBtn.disabled = false;
+        }
+      });
+    }
+
+    // Logout
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        if (supabase) {
+          log('Terminating operative session...');
+          await supabase.auth.signOut();
+          updateAuthView(null);
+          log('Session terminated. Crew DB locked.');
+        }
+      });
+    }
+
+    // Utility: Copy text
+    function copyText(text) {
+      navigator.clipboard.writeText(text);
+      log('Copied to clipboard: ' + text, false, true);
+    }
+
+    // Utility: Filter targets
+    function filterTargets() {
+      const q = document.getElementById('target-search')?.value.toLowerCase();
+      const rows = document.querySelectorAll('#target-tbody tr');
+      rows.forEach(r => {
+        const text = r.textContent.toLowerCase();
+        r.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    // Check initial session & register listener
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session }, error }) => {
+        if (!error && session) updateAuthView(session);
+        else log('Authentication required to access crew database.');
+      });
+
+      supabase.auth.onAuthStateChange((event, session) => {
+        log('Auth Event: ' + event);
+        updateAuthView(session);
+      });
+    }
+  </script>
+</body>
+</html>

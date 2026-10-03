@@ -146,11 +146,24 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     private fun loadSession() {
         val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-        _currentProfile.value = prefs.getString("saved_profile", "") ?: ""
-        _crewIdInput.value = prefs.getString("saved_crew_id", "") ?: ""
-        _crewPasswordInput.value = prefs.getString("saved_crew_pw", "") ?: ""
-        _isGeneralDbAuthenticated.value = prefs.getBoolean("saved_authenticated", false)
-        _isCurrentUserAdmin.value = prefs.getBoolean("saved_is_admin", false)
+        val savedProfile = prefs.getString("saved_profile", "") ?: ""
+        val savedCrewId = prefs.getString("saved_crew_id", "") ?: ""
+        val savedCrewPw = prefs.getString("saved_crew_pw", "") ?: ""
+        val savedAuth = prefs.getBoolean("saved_authenticated", false)
+        val savedAdmin = prefs.getBoolean("saved_is_admin", false)
+
+        _currentProfile.value = savedProfile
+        _crewIdInput.value = savedCrewId
+        _crewPasswordInput.value = savedCrewPw
+
+        // OPSEC Rule: Never auto-log as ADMIN locally without active authenticated session
+        if (savedAuth && savedProfile.isNotBlank() && savedCrewId.isNotBlank()) {
+            _isGeneralDbAuthenticated.value = true
+            _isCurrentUserAdmin.value = savedAdmin
+        } else {
+            _isGeneralDbAuthenticated.value = false
+            _isCurrentUserAdmin.value = false
+        }
     }
 
     private val _currentSection = MutableStateFlow(AppSection.SCREENSHOT_SCANNER)
@@ -375,9 +388,9 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val allTargetsCombinedFlow = combine(
-        generalTargets,
-        internalTargets,
-        externalTargets
+        repository.getTargets(DatabaseScope.GENERAL),
+        repository.getTargets(DatabaseScope.INTERNAL),
+        repository.getTargets(DatabaseScope.EXTERNAL)
     ) { gen, internal, ext ->
         (gen + internal + ext).distinctBy { it.ip }
     }
@@ -395,49 +408,36 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         _currentProfile,
         _crewIdInput
     ) { accounts, allTargets, activeProfile, activeCrewId ->
-        val defaultOperatives = listOf(
-            Triple("m0lt0rn", "CCC", 185L),
-            Triple("CyberGhost_88", "CCC", 120L),
-            Triple("Viper_Null", "ALPHA", 150L),
-            Triple("Shadow_01", "ALPHA", 95L),
-            Triple("Ghost_Sec", "CYBER_NET_X", 110L)
-        )
-
+        val activeHandle = activeProfile.trim().ifBlank { "m0lt0rn" }
         val registeredHandles = accounts.map { it.username }.toSet()
         val contributorHandles = allTargets.map { it.contributor }.filter { it.isNotBlank() }.toSet()
-        val activeHandle = activeProfile.trim().ifBlank { "m0lt0rn" }
 
-        val allHandles = (registeredHandles + contributorHandles + setOf(activeHandle) + defaultOperatives.map { it.first }).filter { it.isNotBlank() }.distinct()
+        val allHandles = (registeredHandles + contributorHandles + setOf(activeHandle))
+            .filter { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) && !it.startsWith("Host-") }
+            .distinct()
 
         val statsList = mutableListOf<OperativeRankStats>()
 
         for (handle in allHandles) {
             val account = accounts.find { it.username.equals(handle, ignoreCase = true) }
             val crewId = account?.crewId?.ifBlank { null }
-                ?: defaultOperatives.find { it.first.equals(handle, ignoreCase = true) }?.second
                 ?: if (handle.equals(activeHandle, ignoreCase = true)) activeCrewId.ifBlank { "CCC" } else "CCC"
 
             val userTargets = allTargets.filter { it.contributor.equals(handle, ignoreCase = true) }
             val targetsIndexed = userTargets.size
-            val accountIdsLinked = userTargets.count { it.name.isNotBlank() && !it.name.startsWith("Host-") && it.name != "Unknown" }
-            val walletMatches = userTargets.count { it.wallet.isNotBlank() }
+            val accountIdsLinked = userTargets.count { it.name.isNotBlank() && !it.name.startsWith("Host-") && it.name != "Unknown" && !it.name.equals(it.ip, ignoreCase = true) }
+            val walletMatches = userTargets.count { it.wallet.isNotBlank() && it.wallet != "N/A" && it.wallet != "Unknown" }
             val appsUpdated = userTargets.count { it.appsParsed || it.antivirusLvl > 0 || it.firewallAppLvl > 0 || it.bypasserLvl > 0 || it.passwordCrackerLvl > 0 }
 
-            val calculatedPts = (targetsIndexed * 10L) + (accountIdsLinked * 15L) + (walletMatches * 25L) + (appsUpdated * 20L)
-
-            val basePts = defaultOperatives.find { it.first.equals(handle, ignoreCase = true) }?.third ?: 0L
-            val totalPts = if (calculatedPts > 0) calculatedPts + basePts else basePts.coerceAtLeast(if (handle.equals(activeHandle, ignoreCase = true)) 35L else 0L)
-
-            val effectiveTargetsCount = if (targetsIndexed > 0) targetsIndexed else if (basePts > 0) (basePts / 30).toInt().coerceAtLeast(1) else 1
-            val effectiveWalletsCount = if (walletMatches > 0) walletMatches else if (basePts > 0) (basePts / 50).toInt().coerceAtLeast(1) else 1
+            val totalPts = (targetsIndexed * 10L) + (accountIdsLinked * 15L) + (walletMatches * 25L) + (appsUpdated * 20L)
 
             statsList.add(
                 OperativeRankStats(
                     handle = handle,
                     crewId = crewId,
-                    targetsIndexed = effectiveTargetsCount,
+                    targetsIndexed = targetsIndexed,
                     accountIdsLinked = accountIdsLinked,
-                    walletMatches = effectiveWalletsCount,
+                    walletMatches = walletMatches,
                     appsUpdated = appsUpdated,
                     totalPts = totalPts,
                     isOnline = account?.isOnline ?: true
@@ -454,7 +454,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 crewRank = crewIndex
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val crewRankStats: StateFlow<List<CrewRankStats>> = operativeRankStats.map { list ->
         val grouped = list.groupBy { it.crewId.ifBlank { "CCC" } }
@@ -469,7 +469,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }.sortedByDescending { it.totalPts }.mapIndexed { index, item ->
             item.copy(globalRank = index + 1)
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val myOperativeStats: StateFlow<OperativeRankStats?> = combine(
         operativeRankStats,
@@ -477,7 +477,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     ) { list, activeProfile ->
         val handle = activeProfile.trim().ifBlank { "m0lt0rn" }
         list.find { it.handle.equals(handle, ignoreCase = true) } ?: list.firstOrNull()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val intelligenceReports: StateFlow<List<IntelligenceReportEntity>> = repository.getAllIntelligenceReports()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -546,8 +546,29 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         return PeakWindowInfo(windowStr, false, maxVol)
     }
 
-    val recentOcrResults: StateFlow<List<OcrTextResultEntity>> = repository.getRecentOcrResults(30)
+    val auditLogs: StateFlow<List<com.example.data.model.AuditLogEntity>> = repository.getAllAuditLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun recordAuditLog(action: String, details: String, targetIp: String = "") {
+        viewModelScope.launch {
+            val handle = _currentProfile.value.ifBlank { "UNASSIGNED" }
+            val crewId = _crewIdInput.value.ifBlank { "CCC" }
+            repository.insertAuditLog(
+                operatorHandle = handle,
+                action = action,
+                details = details,
+                targetIp = targetIp,
+                crewId = crewId
+            )
+        }
+    }
+
+    fun purgeAuditLogs() {
+        viewModelScope.launch {
+            repository.purgeAuditLogs()
+            recordAuditLog("AUDIT_PURGE", "Admin cleared local audit log trail")
+        }
+    }
 
     // ==========================================
     // FORUM & INTERACTIVE CREW / GLOBAL FEEDS
@@ -770,7 +791,30 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         loadSession()
         viewModelScope.launch {
             repository.initializeDefaultData()
+            syncProfilesFromSupabase()
             syncFeedFromSupabase()
+        }
+    }
+
+    private suspend fun syncProfilesFromSupabase() {
+        if (!SupabaseClient.isRemoteConfigured()) return
+        try {
+            val remoteProfiles = SupabaseClient.fetchRemoteProfiles()
+            if (remoteProfiles.isNotEmpty()) {
+                for (p in remoteProfiles) {
+                    repository.insertCrewAccount(
+                        CrewAccountEntity(
+                            username = p.username,
+                            crewId = p.crewId,
+                            isActive = true,
+                            isOnline = true,
+                            role = p.role
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // Graceful fallback for offline operation
         }
     }
 
@@ -1093,7 +1137,12 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
-    fun processOcrText(rawText: String, imageUri: String? = null) {
+    fun processOcrText(
+        rawText: String,
+        imageUri: String? = null,
+        photoTimestamp: Long = 0L,
+        targetScope: DatabaseScope = DatabaseScope.INTERNAL
+    ) {
         _scannerState.value = _scannerState.value.copy(
             isProcessing = true,
             statusText = "Status: Processing OCR...",
@@ -1104,7 +1153,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             appendScannerLog("[TESSERACT_OCR] Initiating optical character recognition...")
             appendScannerLog("[PREPROCESS] Contrast enhancement & text matrix thresholding OK.")
 
-            val result = OcrParser.parseOcrText(rawText)
+            val result = OcrParser.parseOcrText(rawText, photoTimestamp)
             for (line in when (result) {
                 is OcrParseOutput.AccountData -> result.logs
                 is OcrParseOutput.AppsData -> result.logs
@@ -1154,74 +1203,18 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 confidenceScore = if (result is OcrParseOutput.Unknown) 0.40f else 0.98f
             )
             repository.insertOcrResult(ocrRecord)
-            appendScannerLog("[OCR_ROOM] Saved OCR extraction record # to Room database.")
+            appendScannerLog("[OCR_ROOM] Saved OCR extraction record to Room database.")
 
             when (result) {
                 is OcrParseOutput.AccountData -> {
-                    val acc = result.account
-                    val target = TargetEntity(
-                        ip = acc.ip.ifBlank { "Unassigned_${System.currentTimeMillis() % 1000}" },
-                        name = acc.name,
-                        crew = acc.crew,
-                        level = acc.level,
-                        rep = acc.rep,
-                        score = acc.score,
-                        fw = acc.fw,
-                        enc = acc.enc,
-                        scope = DatabaseScope.INTERNAL,
-                        contributor = _currentProfile.value
-                    )
-                    repository.insertOrUpdateTarget(target)
-                    appendScannerLog("[DATABASE] Matched IP '${target.ip}' and updated account profile intel.")
+                    mergeAndSaveAccountData(result.account, targetScope)
                     _scannerState.value = _scannerState.value.copy(
                         isProcessing = false,
                         statusText = "Status: OCR ready - Account Indexed"
                     )
                 }
                 is OcrParseOutput.AppsData -> {
-                    val apps = result.apps
-                    // Match with account name previously indexed
-                    val matchedTarget = repository.getTargetByName(apps.accountName, DatabaseScope.INTERNAL)
-                    if (matchedTarget != null) {
-                        val updated = matchedTarget.copy(
-                            antivirusLvl = apps.antivirusLvl,
-                            spamLvl = apps.spamLvl,
-                            rootkitLvl = apps.rootkitLvl,
-                            firewallAppLvl = apps.firewallLvl,
-                            bypasserLvl = apps.bypasserLvl,
-                            passwordCrackerLvl = apps.passwordCrackerLvl,
-                            passwordEncryptorLvl = apps.passwordEncryptorLvl,
-                            proxyLvl = apps.proxyLvl,
-                            traceLvl = apps.traceLvl,
-                            keygenLvl = apps.keygenLvl,
-                            siphonLvl = apps.siphonLvl,
-                            appsParsed = true
-                        )
-                        repository.insertOrUpdateTarget(updated)
-                        appendScannerLog("[DATABASE] Linked 11 APPS to IP '${matchedTarget.ip}' (${apps.accountName}).")
-                    } else {
-                        // Create target record with account name
-                        val newTarget = TargetEntity(
-                            ip = "Pending_IP_${apps.accountName}",
-                            name = apps.accountName,
-                            scope = DatabaseScope.INTERNAL,
-                            antivirusLvl = apps.antivirusLvl,
-                            spamLvl = apps.spamLvl,
-                            rootkitLvl = apps.rootkitLvl,
-                            firewallAppLvl = apps.firewallLvl,
-                            bypasserLvl = apps.bypasserLvl,
-                            passwordCrackerLvl = apps.passwordCrackerLvl,
-                            passwordEncryptorLvl = apps.passwordEncryptorLvl,
-                            proxyLvl = apps.proxyLvl,
-                            traceLvl = apps.traceLvl,
-                            keygenLvl = apps.keygenLvl,
-                            siphonLvl = apps.siphonLvl,
-                            appsParsed = true,
-                            contributor = _currentProfile.value
-                        )
-                        repository.insertOrUpdateTarget(newTarget)
-                        appendScannerLog("[DATABASE] Stored APPS profile under account '${apps.accountName}'. Awaiting IP match.")
-                    }
+                    mergeAndSaveAppsData(result.apps, targetScope)
                     _scannerState.value = _scannerState.value.copy(
                         isProcessing = false,
                         statusText = "Status: OCR ready - APPS Matrix Indexed"
@@ -1235,6 +1228,201 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                     )
                 }
             }
+        }
+    }
+
+    private suspend fun mergeAndSaveAccountData(acc: com.example.parser.OcrAccountResult, targetScope: DatabaseScope) {
+        val existing = if (acc.ip.isNotBlank()) {
+            repository.getTargetByIp(acc.ip, targetScope)
+                ?: repository.getTargetByIp(acc.ip, DatabaseScope.INTERNAL)
+                ?: repository.getTargetByIp(acc.ip, DatabaseScope.GENERAL)
+        } else null
+
+        val photoTs = if (acc.photoTimestamp > 0L) acc.photoTimestamp else System.currentTimeMillis()
+        val isRebootDetected = acc.rebootTag.isNotBlank() && acc.rebootTag.matches(Regex("""(?i)R[1-6]"""))
+
+        // Strict EXIF Photo Timestamp Validation (Absolute Priority to Capture Date)
+        if (existing != null && existing.ocrPhotoTimestamp > 0L) {
+            if (photoTs < existing.ocrPhotoTimestamp - 30_000L) {
+                val oldStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(photoTs))
+                val curStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(existing.ocrPhotoTimestamp))
+                appendScannerLog("[EXIF_REJECTED] Scanned photo capture date ($oldStr) is older than existing record ($curStr) for IP '${acc.ip}'. Ingestion rejected to prevent state corruption with obsolete data.")
+                return
+            }
+        }
+
+        val finalRebootTag = if (isRebootDetected) acc.rebootTag.uppercase() else (existing?.rebootTag ?: "")
+
+        // Merge Firewall Level safely with Reboot Exception rule
+        val finalFw = when {
+            acc.fw > 0 && existing != null && existing.fw > 0 -> {
+                if (acc.fw < existing.fw) {
+                    if (isRebootDetected && photoTs >= (existing.ocrPhotoTimestamp - 30_000L)) {
+                        appendScannerLog("[REBOOT_DEGRADE] Reboot tag '$finalRebootTag' confirmed on newer EXIF capture ($photoTs). Lowering FW level ${existing.fw} -> ${acc.fw}.")
+                        acc.fw
+                    } else {
+                        appendScannerLog("[DATA_PROTECTED] Retained existing FW level ${existing.fw} (New scan was lower: ${acc.fw}, but no valid R1-R6 reboot tag detected on newer capture).")
+                        existing.fw
+                    }
+                } else {
+                    acc.fw
+                }
+            }
+            acc.fw > 0 -> acc.fw
+            existing != null && existing.fw > 0 -> existing.fw
+            else -> 0
+        }
+
+        // Merge Encryptor Level safely with Reboot Exception rule
+        val finalEnc = when {
+            acc.enc > 0 && existing != null && existing.enc > 0 -> {
+                if (acc.enc < existing.enc) {
+                    if (isRebootDetected && photoTs >= (existing.ocrPhotoTimestamp - 30_000L)) {
+                        appendScannerLog("[REBOOT_DEGRADE] Reboot tag '$finalRebootTag' confirmed on newer EXIF capture ($photoTs). Lowering ENC level ${existing.enc} -> ${acc.enc}.")
+                        acc.enc
+                    } else {
+                        appendScannerLog("[DATA_PROTECTED] Retained existing ENC level ${existing.enc} (New scan was lower: ${acc.enc}, but no valid R1-R6 reboot tag detected on newer capture).")
+                        existing.enc
+                    }
+                } else {
+                    acc.enc
+                }
+            }
+            acc.enc > 0 -> acc.enc
+            existing != null && existing.enc > 0 -> existing.enc
+            else -> 0
+        }
+
+        val finalPhotoTs = maxOf(photoTs, existing?.ocrPhotoTimestamp ?: 0L)
+
+        val mergedTarget = TargetEntity(
+            id = existing?.id ?: 0L,
+            ip = acc.ip.ifBlank { existing?.ip ?: "Unassigned_${System.currentTimeMillis() % 1000}" },
+            name = acc.name.ifBlank { existing?.name ?: "" },
+            crew = acc.crew.ifBlank { existing?.crew ?: "" },
+            level = if (acc.level > 0) acc.level else (existing?.level ?: 1),
+            rep = if (acc.rep != 0) acc.rep else (existing?.rep ?: 0),
+            score = if (acc.score > 0) acc.score else (existing?.score ?: 0L),
+            fw = finalFw,
+            enc = finalEnc,
+            stolenCrypto = existing?.stolenCrypto ?: 0L,
+            hitCount = existing?.hitCount ?: 0,
+            avgPerHit = existing?.avgPerHit ?: 0L,
+            crPerHour = existing?.crPerHour ?: 0L,
+            peakHour = existing?.peakHour ?: "--:--",
+            wallet = existing?.wallet ?: "",
+            scope = targetScope,
+            contributor = existing?.contributor?.ifBlank { _currentProfile.value } ?: _currentProfile.value,
+            lastUpdated = System.currentTimeMillis(),
+            antivirusLvl = existing?.antivirusLvl ?: 0,
+            spamLvl = existing?.spamLvl ?: 0,
+            rootkitLvl = existing?.rootkitLvl ?: 0,
+            firewallAppLvl = existing?.firewallAppLvl ?: 0,
+            bypasserLvl = existing?.bypasserLvl ?: 0,
+            passwordCrackerLvl = existing?.passwordCrackerLvl ?: 0,
+            passwordEncryptorLvl = existing?.passwordEncryptorLvl ?: 0,
+            proxyLvl = existing?.proxyLvl ?: 0,
+            traceLvl = existing?.traceLvl ?: 0,
+            keygenLvl = existing?.keygenLvl ?: 0,
+            siphonLvl = existing?.siphonLvl ?: 0,
+            appsParsed = existing?.appsParsed ?: false,
+            rebootTag = finalRebootTag,
+            ocrPhotoTimestamp = finalPhotoTs
+        )
+
+        repository.insertOrUpdateTarget(mergedTarget)
+        val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(finalPhotoTs))
+        appendScannerLog("[DATABASE] Merged & preserved intel for IP '${mergedTarget.ip}' (${mergedTarget.name}). EXIF Date: $dateStr, FW:${mergedTarget.fw}, ENC:${mergedTarget.enc}, Reboot:${mergedTarget.rebootTag.ifBlank { "NONE" }}.")
+    }
+
+    private suspend fun mergeAndSaveAppsData(apps: com.example.parser.OcrAppsResult, targetScope: DatabaseScope) {
+        val targetByIp = if (apps.ip.isNotBlank() && OcrParser.isValidIp(apps.ip)) {
+            repository.getTargetByIp(apps.ip, targetScope) ?: repository.getTargetByIp(apps.ip, DatabaseScope.INTERNAL)
+        } else null
+
+        val targetByName = if (targetByIp == null && apps.accountName.isNotBlank()) {
+            val foundInternal = repository.getTargetByName(apps.accountName, DatabaseScope.INTERNAL)
+            val found = foundInternal ?: repository.getTargetByName(apps.accountName, DatabaseScope.GENERAL)
+            if (found != null && OcrParser.isValidIp(found.ip)) found else null
+        } else null
+
+        val existing = targetByIp ?: targetByName
+        val photoTs = if (apps.photoTimestamp > 0L) apps.photoTimestamp else System.currentTimeMillis()
+        val isReboot = apps.rebootTag.isNotBlank() && apps.rebootTag.matches(Regex("""(?i)R[1-6]"""))
+
+        // Strict EXIF Photo Timestamp Validation (Absolute Priority to Capture Date)
+        if (existing != null && existing.ocrPhotoTimestamp > 0L) {
+            if (photoTs < existing.ocrPhotoTimestamp - 30_000L) {
+                val oldStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(photoTs))
+                val curStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(existing.ocrPhotoTimestamp))
+                appendScannerLog("[EXIF_REJECTED] Scanned software photo capture date ($oldStr) is older than existing record ($curStr). Ingestion rejected to prevent state corruption.")
+                return
+            }
+        }
+
+        val finalReboot = if (isReboot) apps.rebootTag.uppercase() else (existing?.rebootTag ?: "")
+
+        fun resolveAppLvl(appName: String, newLvl: Int, existingLvl: Int): Int {
+            if (newLvl <= 0) return existingLvl
+            if (existingLvl <= 0) return newLvl
+            if (newLvl < existingLvl) {
+                return if (isReboot && photoTs >= (existing?.ocrPhotoTimestamp ?: 0L) - 30_000L) {
+                    appendScannerLog("[REBOOT_DEGRADE] Reboot tag '$finalReboot' confirmed on newer EXIF capture. Lowering $appName level $existingLvl -> $newLvl.")
+                    newLvl
+                } else {
+                    appendScannerLog("[DATA_PROTECTED] Retained $appName level $existingLvl (New scan was lower: $newLvl, but no valid R1-R6 reboot tag detected on newer capture).")
+                    existingLvl
+                }
+            }
+            return newLvl
+        }
+
+        if (existing != null) {
+            val updated = existing.copy(
+                antivirusLvl = resolveAppLvl("Antivirus", apps.antivirusLvl, existing.antivirusLvl),
+                spamLvl = resolveAppLvl("Spam", apps.spamLvl, existing.spamLvl),
+                rootkitLvl = resolveAppLvl("Rootkit", apps.rootkitLvl, existing.rootkitLvl),
+                firewallAppLvl = resolveAppLvl("Firewall", apps.firewallLvl, existing.firewallAppLvl),
+                bypasserLvl = resolveAppLvl("Bypasser", apps.bypasserLvl, existing.bypasserLvl),
+                passwordCrackerLvl = resolveAppLvl("Password Cracker", apps.passwordCrackerLvl, existing.passwordCrackerLvl),
+                passwordEncryptorLvl = resolveAppLvl("Password Encryptor", apps.passwordEncryptorLvl, existing.passwordEncryptorLvl),
+                proxyLvl = resolveAppLvl("Proxy", apps.proxyLvl, existing.proxyLvl),
+                traceLvl = resolveAppLvl("Trace", apps.traceLvl, existing.traceLvl),
+                keygenLvl = resolveAppLvl("Keygen", apps.keygenLvl, existing.keygenLvl),
+                siphonLvl = resolveAppLvl("Siphon", apps.siphonLvl, existing.siphonLvl),
+                appsParsed = true,
+                rebootTag = finalReboot,
+                ocrPhotoTimestamp = maxOf(photoTs, existing.ocrPhotoTimestamp)
+            )
+            repository.insertOrUpdateTarget(updated)
+            val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(updated.ocrPhotoTimestamp))
+            appendScannerLog("[DATABASE] Linked 11 APPS to verified IP '${existing.ip}' (${existing.name}). EXIF Date: $dateStr, Reboot:${updated.rebootTag.ifBlank { "NONE" }}.")
+        } else if (apps.ip.isNotBlank() && OcrParser.isValidIp(apps.ip)) {
+            val newTarget = TargetEntity(
+                ip = apps.ip,
+                name = apps.accountName,
+                scope = targetScope,
+                antivirusLvl = apps.antivirusLvl,
+                spamLvl = apps.spamLvl,
+                rootkitLvl = apps.rootkitLvl,
+                firewallAppLvl = apps.firewallLvl,
+                bypasserLvl = apps.bypasserLvl,
+                passwordCrackerLvl = apps.passwordCrackerLvl,
+                passwordEncryptorLvl = apps.passwordEncryptorLvl,
+                proxyLvl = apps.proxyLvl,
+                traceLvl = apps.traceLvl,
+                keygenLvl = apps.keygenLvl,
+                siphonLvl = apps.siphonLvl,
+                appsParsed = true,
+                rebootTag = finalReboot,
+                ocrPhotoTimestamp = photoTs,
+                contributor = _currentProfile.value
+            )
+            repository.insertOrUpdateTarget(newTarget)
+            val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(photoTs))
+            appendScannerLog("[DATABASE] Stored APPS profile under verified IP '${apps.ip}' (${apps.accountName}). EXIF Date: $dateStr.")
+        } else {
+            appendScannerLog("[OCR_WARN] Extraction discarded: No valid IPv4 structure verified or matched for software matrix '${apps.accountName}'. Target rejected.")
         }
     }
 
@@ -1546,22 +1734,35 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
+    private fun hashSha256(input: String): String {
+        return try {
+            val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+            bytes.joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     fun purgeGeneralDatabase(adminPasswordAttempt: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val currentProfileUser = _currentProfile.value.trim()
-            // Only Super Admin (e.g. user "m0lt0rn" or authenticated admin user) is authorized to purge general database (GENERAL)
             val isSuperAdmin = currentProfileUser.equals("m0lt0rn", ignoreCase = true) || (_isCurrentUserAdmin.value && currentProfileUser.isNotBlank())
             if (!isSuperAdmin) {
                 _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
                 onResult(false)
                 return@launch
             }
-            if (adminPasswordAttempt.isNotBlank() && adminPasswordAttempt.length >= 3) {
+            val hashedAttempt = hashSha256(adminPasswordAttempt.trim())
+            val masterAdminHash = "d191038eb3dacd219bbab7f041db14a51de0ec73573e0ce21fd40971498ab93e"
+            val isKeyValid = hashedAttempt == masterAdminHash || (adminPasswordAttempt.trim() == "1234" && _isCurrentUserAdmin.value)
+            
+            if (isKeyValid) {
                 val crewId = _crewIdInput.value.trim()
                 if (crewId.isNotBlank()) {
                     SupabaseClient.purgeGeneralRecords(crewId)
                 }
                 repository.purgeScope(DatabaseScope.GENERAL)
+                recordAuditLog("DATABASE_PURGE", "Wiped general database records and reset test tables in Supabase")
                 _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
                 onResult(true)
             } else {
@@ -1787,39 +1988,12 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
-    fun getLinkedGoogleHandle(): String {
-        val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-        return prefs.getString("google_linked_handle", "") ?: ""
-    }
-
-    fun linkGoogleOAuthToHandle(handle: String, onResult: ((Boolean, String) -> Unit)? = null) {
-        val cleanHandle = handle.trim()
-        if (cleanHandle.isBlank()) {
-            onResult?.invoke(false, "ERROR: Operative Handle cannot be empty to link Google OAuth.")
-            return
-        }
-        val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-        prefs.edit().putString("google_linked_handle", cleanHandle).apply()
-        _currentProfile.value = cleanHandle
-        saveSession()
-        viewModelScope.launch {
-            val role = if (_isCurrentUserAdmin.value) "ADMIN" else "OPERATIVE"
-            SupabaseClient.syncOperativeProfile(cleanHandle, role, _crewIdInput.value)
-            repository.insertCrewAccount(
-                CrewAccountEntity(
-                    username = cleanHandle,
-                    crewId = _crewIdInput.value.ifBlank { "ALPHA" },
-                    isActive = true,
-                    isOnline = true,
-                    role = role
-                )
-            )
-            appendScannerLog("[ACCOUNT_LINK] Linked Google OAuth permanently to Operative Handle '$cleanHandle'")
-            onResult?.invoke(true, "SUCCESS // Google OAuth linked to '$cleanHandle'")
-        }
-    }
-
-    fun loginOperativeLocal(username: String, passcode: String = "1234", onResult: ((Boolean, String) -> Unit)? = null) {
+    fun loginOperativeLocal(
+        username: String,
+        passcode: String = "1234",
+        rememberSession: Boolean = true,
+        onResult: ((Boolean, String) -> Unit)? = null
+    ) {
         val cleanName = username.trim()
         val cleanPw = passcode.trim().ifBlank { "1234" }
         if (cleanName.isBlank()) {
@@ -1837,7 +2011,10 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
 
         _currentProfile.value = cleanName
-        saveSession()
+        if (rememberSession) {
+            prefs.edit().putBoolean("remember_session_$cleanName", true).apply()
+            saveSession()
+        }
         viewModelScope.launch {
             val role = if (_isCurrentUserAdmin.value) "ADMIN" else "OPERATIVE"
             SupabaseClient.syncOperativeProfile(cleanName, role, _crewIdInput.value)
@@ -1852,53 +2029,6 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             )
             appendScannerLog("[OPERATOR_AUTH] Local operative identity established as '$cleanName'")
             onResult?.invoke(true, "SUCCESS // Operative session set: $cleanName")
-        }
-    }
-
-    fun authenticateOAuth(provider: String, targetOperative: String = "", onResult: ((Boolean, String) -> Unit)? = null) {
-        viewModelScope.launch {
-            _isSupabaseLoading.value = true
-            val linkedHandle = getLinkedGoogleHandle()
-            val cleanTarget = targetOperative.trim()
-
-            val finalHandle = when {
-                linkedHandle.isNotBlank() -> linkedHandle
-                cleanTarget.isNotBlank() -> {
-                    val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-                    prefs.edit().putString("google_linked_handle", cleanTarget).apply()
-                    cleanTarget
-                }
-                _currentProfile.value.isNotBlank() -> {
-                    val current = _currentProfile.value
-                    val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-                    prefs.edit().putString("google_linked_handle", current).apply()
-                    current
-                }
-                else -> ""
-            }
-
-            if (finalHandle.isBlank()) {
-                _isSupabaseLoading.value = false
-                onResult?.invoke(false, "PROMPT_HANDLE_REQUIRED")
-                return@launch
-            }
-
-            _currentProfile.value = finalHandle
-            saveSession()
-            val role = if (_isCurrentUserAdmin.value) "ADMIN" else "OPERATIVE"
-            SupabaseClient.syncOperativeProfile(finalHandle, role, _crewIdInput.value)
-            repository.insertCrewAccount(
-                CrewAccountEntity(
-                    username = finalHandle,
-                    crewId = _crewIdInput.value.ifBlank { "ALPHA" },
-                    isActive = true,
-                    isOnline = true,
-                    role = role
-                )
-            )
-            _isSupabaseLoading.value = false
-            appendScannerLog("[OPERATOR_AUTH] Google OAuth authenticated for Operative Handle '$finalHandle'")
-            onResult?.invoke(true, "SUCCESS // Google OAuth authenticated: $finalHandle")
         }
     }
 
@@ -1923,90 +2053,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             val remoteTargets = SupabaseClient.fetchGeneralRecords(crewId)
             if (remoteTargets.isNotEmpty()) {
                 remoteTargets.forEach { repository.insertOrUpdateTarget(it) }
-            }
-
-            // Seed initial shared crew targets if empty for real-time online shared view
-            val currentGen = repository.getTargets(DatabaseScope.GENERAL).first()
-            if (currentGen.isEmpty()) {
-                val seedTargets = listOf(
-                    TargetEntity(
-                        ip = "185.220.101.5",
-                        name = "ApexRouter",
-                        level = 72,
-                        fw = 60,
-                        enc = 55,
-                        rep = 1450,
-                        score = 4200,
-                        crew = crewId,
-                        stolenCrypto = 850000L,
-                        hitCount = 14,
-                        avgPerHit = 60714L,
-                        crPerHour = 120000L,
-                        peakHour = "14:00",
-                        wallet = "0x89f4...3a1",
-                        contributor = "Cipher_99",
-                        scope = DatabaseScope.GENERAL
-                    ),
-                    TargetEntity(
-                        ip = "194.26.29.112",
-                        name = "CoreNexus",
-                        level = 85,
-                        fw = 75,
-                        enc = 70,
-                        rep = 2100,
-                        score = 6800,
-                        crew = crewId,
-                        stolenCrypto = 1420000L,
-                        hitCount = 22,
-                        avgPerHit = 64545L,
-                        crPerHour = 210000L,
-                        peakHour = "18:00",
-                        wallet = "0x17d2...c9e",
-                        contributor = "Phantom_X",
-                        scope = DatabaseScope.GENERAL
-                    ),
-                    TargetEntity(
-                        ip = "91.132.147.88",
-                        name = "VortexNode",
-                        level = 58,
-                        fw = 45,
-                        enc = 40,
-                        rep = 890,
-                        score = 2900,
-                        crew = crewId,
-                        stolenCrypto = 380000L,
-                        hitCount = 8,
-                        avgPerHit = 47500L,
-                        crPerHour = 85000L,
-                        peakHour = "21:00",
-                        wallet = "0x44c1...b52",
-                        contributor = "ZeroByte",
-                        scope = DatabaseScope.GENERAL
-                    ),
-                    TargetEntity(
-                        ip = "192.168.45.12",
-                        name = "Target-192.168.45.12",
-                        level = 65,
-                        fw = 50,
-                        enc = 48,
-                        rep = 1200,
-                        score = 3500,
-                        crew = crewId,
-                        stolenCrypto = 620000L,
-                        hitCount = 10,
-                        avgPerHit = 62000L,
-                        crPerHour = 95000L,
-                        peakHour = "16:00",
-                        wallet = "hx3aC9...9811",
-                        contributor = "Viper_Null",
-                        scope = DatabaseScope.GENERAL
-                    )
-                )
-                seedTargets.forEach {
-                    repository.insertOrUpdateTarget(it)
-                    SupabaseClient.insertGeneralRecord(it)
-                }
-                appendScannerLog("[CREW_FEED] Downloaded pre-existing record from Viper_Null: IP 192.168.45.12 | Wallet: hx3aC9...9811")
+                appendScannerLog("[CREW_FEED] Synchronized ${remoteTargets.size} shared targets from Crew [$crewId].")
             }
 
             // Real-time presence heartbeat loop
@@ -2070,5 +2117,10 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         viewModelScope.launch {
             repository.purgeOcrResults()
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopOnlineCrewSync()
     }
 }

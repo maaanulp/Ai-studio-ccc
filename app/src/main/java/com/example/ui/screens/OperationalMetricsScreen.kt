@@ -204,10 +204,10 @@ private fun PersonalTelemetryCard(
     myStats: OperativeRankStats?,
     avgPerHit: Long
 ) {
-    val totalPts = myStats?.totalPts ?: 35L
+    val totalPts = myStats?.totalPts ?: 0L
     val rankText = "#${myStats?.globalRank ?: 1} GLOBAL // #${myStats?.crewRank ?: 1} CREW"
-    val targetsCount = myStats?.targetsIndexed ?: 1
-    val walletsCount = myStats?.walletMatches ?: 1
+    val targetsCount = myStats?.targetsIndexed ?: 0
+    val walletsCount = myStats?.walletMatches ?: 0
 
     Column(
         modifier = Modifier
@@ -678,6 +678,25 @@ private fun MyCrewLeaderboard(
                 }
             }
         }
+
+        if (operatives.size <= 1) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MatrixDarkSurface)
+                    .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Awaiting active crew telemetry...",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MatrixTextMuted
+                )
+            }
+        }
     }
 }
 
@@ -778,6 +797,25 @@ private fun CrewsRankLeaderboard(
                 )
             }
         }
+
+        if (crews.size <= 1) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MatrixDarkSurface)
+                    .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Awaiting active crew telemetry...",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MatrixTextMuted
+                )
+            }
+        }
     }
 }
 
@@ -875,6 +913,25 @@ private fun GlobalTopLeaderboard(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = MatrixGreenGlow
+                )
+            }
+        }
+
+        if (operatives.size <= 1) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MatrixDarkSurface)
+                    .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Awaiting active crew telemetry...",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MatrixTextMuted
                 )
             }
         }

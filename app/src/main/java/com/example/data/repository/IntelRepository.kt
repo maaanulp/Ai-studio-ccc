@@ -23,7 +23,8 @@ class IntelRepository(
     private val reportDao: IntelligenceReportDao,
     private val logEntryDao: LogEntryDao,
     private val ocrResultDao: OcrTextResultDao,
-    private val feedDao: FeedDao? = null
+    private val feedDao: FeedDao? = null,
+    private val auditLogDao: com.example.data.local.AuditLogDao? = null
 ) {
 
     // ==========================================
@@ -274,6 +275,62 @@ class IntelRepository(
 
     suspend fun purgeOcrResults() {
         ocrResultDao.purgeAllOcrResults()
+    }
+
+    // ==========================================
+    // AUDIT LOG OPERATIONS
+    // ==========================================
+
+    fun getAllAuditLogs(): Flow<List<com.example.data.model.AuditLogEntity>> {
+        return auditLogDao?.getAllAuditLogs() ?: emptyFlow()
+    }
+
+    suspend fun insertAuditLog(
+        operatorHandle: String,
+        action: String,
+        details: String,
+        targetIp: String = "",
+        crewId: String = "CCC"
+    ) {
+        val entity = com.example.data.model.AuditLogEntity(
+            operatorHandle = operatorHandle.ifBlank { "UNASSIGNED" },
+            action = action,
+            details = details,
+            targetIp = targetIp
+        )
+        val id = auditLogDao?.insertAuditLog(entity) ?: 0L
+
+        // Attempt remote sync to Supabase
+        val success = com.example.data.remote.SupabaseClient.insertAuditLogRemote(
+            operatorHandle = operatorHandle,
+            action = action,
+            details = details,
+            targetIp = targetIp,
+            crewId = crewId
+        )
+        if (success && id > 0) {
+            auditLogDao?.markAuditLogSynced(id)
+        }
+    }
+
+    suspend fun syncUnsyncedAuditLogs(crewId: String = "CCC") {
+        val unsynced = auditLogDao?.getUnsyncedAuditLogs() ?: emptyList()
+        for (log in unsynced) {
+            val ok = com.example.data.remote.SupabaseClient.insertAuditLogRemote(
+                operatorHandle = log.operatorHandle,
+                action = log.action,
+                details = log.details,
+                targetIp = log.targetIp,
+                crewId = crewId
+            )
+            if (ok) {
+                auditLogDao?.markAuditLogSynced(log.id)
+            }
+        }
+    }
+
+    suspend fun purgeAuditLogs() {
+        auditLogDao?.purgeAuditLogs()
     }
 
     // ==========================================

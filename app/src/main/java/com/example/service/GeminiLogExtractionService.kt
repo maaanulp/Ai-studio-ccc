@@ -706,42 +706,44 @@ object GeminiLogExtractionService {
 
         // 1. Process explicit target
         result.extractedTarget?.let { pt ->
-            val targetIp = pt.ip.takeIf { !it.isNullOrBlank() } ?: (if (!pt.name.isNullOrBlank()) "Pending_IP_${pt.name}" else "Host_${System.currentTimeMillis() % 1000}")
-            targets.add(
-                TargetEntity(
-                    ip = targetIp,
-                    name = pt.name ?: "Target-$targetIp",
-                    level = if (pt.level > 0) pt.level else 1,
-                    fw = pt.fw,
-                    enc = pt.enc,
-                    rep = pt.rep,
-                    score = pt.score,
-                    wallet = pt.wallet ?: "",
-                    crew = pt.crew ?: "",
-                    stolenCrypto = pt.stolenCrypto,
-                    scope = scope,
-                    contributor = contributor,
-                    lastUpdated = System.currentTimeMillis(),
-                    antivirusLvl = pt.antivirusLvl,
-                    spamLvl = pt.spamLvl,
-                    rootkitLvl = pt.rootkitLvl,
-                    firewallAppLvl = pt.firewallAppLvl,
-                    bypasserLvl = pt.bypasserLvl,
-                    passwordCrackerLvl = pt.passwordCrackerLvl,
-                    passwordEncryptorLvl = pt.passwordEncryptorLvl,
-                    proxyLvl = pt.proxyLvl,
-                    traceLvl = pt.traceLvl,
-                    keygenLvl = pt.keygenLvl,
-                    siphonLvl = pt.siphonLvl,
-                    appsParsed = pt.appsParsed
+            val rawIp = pt.ip?.trim() ?: ""
+            if (com.example.parser.OcrParser.isValidIp(rawIp)) {
+                targets.add(
+                    TargetEntity(
+                        ip = rawIp,
+                        name = pt.name?.trim() ?: "",
+                        level = if (pt.level > 0) pt.level else 0,
+                        fw = pt.fw,
+                        enc = pt.enc,
+                        rep = pt.rep,
+                        score = pt.score,
+                        wallet = pt.wallet ?: "",
+                        crew = pt.crew ?: "",
+                        stolenCrypto = pt.stolenCrypto,
+                        scope = scope,
+                        contributor = contributor,
+                        lastUpdated = System.currentTimeMillis(),
+                        antivirusLvl = pt.antivirusLvl,
+                        spamLvl = pt.spamLvl,
+                        rootkitLvl = pt.rootkitLvl,
+                        firewallAppLvl = pt.firewallAppLvl,
+                        bypasserLvl = pt.bypasserLvl,
+                        passwordCrackerLvl = pt.passwordCrackerLvl,
+                        passwordEncryptorLvl = pt.passwordEncryptorLvl,
+                        proxyLvl = pt.proxyLvl,
+                        traceLvl = pt.traceLvl,
+                        keygenLvl = pt.keygenLvl,
+                        siphonLvl = pt.siphonLvl,
+                        appsParsed = pt.appsParsed
+                    )
                 )
-            )
+            }
         }
 
         // 2. Process logs
         val groupedByIp = result.extractedLogs.groupBy { it.ip }
         for ((ip, logs) in groupedByIp) {
-            if (ip.isBlank()) continue
+            if (!com.example.parser.OcrParser.isValidIp(ip)) continue
             val totalStolen = logs.sumOf { it.stolenAmount }
             val hitCount = logs.size
             val avg = if (hitCount > 0) totalStolen / hitCount else 0L
@@ -751,8 +753,8 @@ object GeminiLogExtractionService {
             targets.add(
                 TargetEntity(
                     ip = ip,
-                    name = "Target-$ip",
-                    level = 1,
+                    name = "",
+                    level = 0,
                     fw = 0,
                     enc = 0,
                     wallet = wallet,
