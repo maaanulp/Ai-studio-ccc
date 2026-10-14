@@ -83,14 +83,14 @@ fun AuditLogModal(
         title = {
             Column {
                 Text(
-                    text = "🔒 AUDITORÍA DE ACCIONES DE OPERADORES [ADMIN]",
+                    text = "🔒 OPERATIVE AUDIT TRAIL [ADMIN]",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = CyberAmber
                 )
                 Text(
-                    text = "Registro histórico de actividad // Acceso restringido a Administrador",
+                    text = "Historical activity log // Restricted to Administrator",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     color = MatrixTextMuted
@@ -107,7 +107,7 @@ fun AuditLogModal(
                     onValueChange = { searchQuery = it },
                     placeholder = {
                         Text(
-                            text = "Buscar por usuario, acción o IP...",
+                            text = "Search by operative, action or IP...",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             color = MatrixTextMuted
@@ -139,7 +139,7 @@ fun AuditLogModal(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "NO HAY REGISTROS DE AUDITORÍA DISPONIBLES",
+                            text = "NO AUDIT LOG RECORDS AVAILABLE",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             color = MatrixTextMuted
@@ -182,7 +182,7 @@ fun AuditLogModal(
                                 }
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
-                                    text = "Operador: ${log.operatorHandle} ${if (log.targetIp.isNotBlank()) "|| IP: ${log.targetIp}" else ""}",
+                                    text = "Operative: ${log.operatorHandle} ${if (log.targetIp.isNotBlank()) "|| IP: ${log.targetIp}" else ""}",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     color = MatrixGreenGlow
@@ -206,13 +206,13 @@ fun AuditLogModal(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 HackerButton(
-                    text = "LIMPIAR REGISTROS",
+                    text = "[CLEAR LOGS]",
                     onClick = {
                         viewModel.purgeAuditLogs()
                     }
                 )
                 HackerButton(
-                    text = "CERRAR",
+                    text = "[CLOSE]",
                     onClick = onDismiss
                 )
             }

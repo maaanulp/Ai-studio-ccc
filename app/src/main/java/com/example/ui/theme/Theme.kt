@@ -4,38 +4,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val HackerColorScheme = darkColorScheme(
+private val DarkColorScheme = darkColorScheme(
     primary = MatrixGreenPrimary,
-    onPrimary = MatrixDarkBackground,
-    primaryContainer = MatrixDarkSurfaceVariant,
-    onPrimaryContainer = MatrixGreenGlow,
-    secondary = MatrixGreenSecondary,
-    onSecondary = MatrixDarkBackground,
-    secondaryContainer = MatrixDarkSurface,
-    onSecondaryContainer = MatrixGreenSecondary,
-    tertiary = MatrixGreenTertiary,
-    onTertiary = MatrixDarkBackground,
+    secondary = CyberCyan,
+    tertiary = CyberAmber,
     background = MatrixDarkBackground,
-    onBackground = MatrixTextPrimary,
     surface = MatrixDarkSurface,
-    onSurface = MatrixTextPrimary,
     surfaceVariant = MatrixDarkSurfaceVariant,
-    onSurfaceVariant = MatrixTextSecondary,
-    outline = MatrixBorder,
-    outlineVariant = MatrixGreenDim,
-    error = PurgeRed,
-    onError = MatrixDarkBackground,
-    errorContainer = PurgeRedContainer,
-    onErrorContainer = PurgeRedText
+    onPrimary = MatrixDarkBackground,
+    onSecondary = MatrixDarkBackground,
+    onBackground = MatrixTextPrimary,
+    onSurface = MatrixTextPrimary,
+    error = PurgeRed
 )
 
 @Composable
-fun MyApplicationTheme(
+fun Crypt0Cr3wTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = HackerColorScheme,
-        typography = HackerTypography,
+        colorScheme = DarkColorScheme,
         content = content
     )
 }

@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/ic_ccc_launcher_1790202508847"
+        android:drawable="@drawable/img_ccc_launcher_icon"
         android:gravity="center" />
 </layer-list>

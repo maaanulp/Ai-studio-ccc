@@ -32,13 +32,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.TargetEntity
+import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.MatrixBorder
 import com.example.ui.theme.MatrixBorderBright
+import com.example.ui.theme.MatrixDarkBackground
 import com.example.ui.theme.MatrixDarkSurface
 import com.example.ui.theme.MatrixDarkSurfaceVariant
 import com.example.ui.theme.MatrixGreenDim
@@ -66,11 +70,22 @@ fun TargetSpecsDialog(
     val hasValidCustomName = target.name.isNotBlank() &&
             !target.name.equals(target.ip, ignoreCase = true) &&
             !target.name.equals("Target-${target.ip}", ignoreCase = true) &&
-            !target.name.equals("Host-${target.ip}", ignoreCase = true) &&
+            !target.name.startsWith("Host-") &&
+            !target.name.startsWith("Host_") &&
             !target.name.startsWith("Pending_IP_") &&
-            !target.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+            !target.name.equals("UNASSIGNED TARGET", ignoreCase = true) &&
+            !target.name.equals("UNASSIGNED", ignoreCase = true) &&
+            !target.name.equals("Unknown", ignoreCase = true)
 
-    val displayName = if (hasValidCustomName) target.name else "UNASSIGNED TARGET"
+    val titleHeaderText = buildString {
+        append(target.ip)
+        if (hasValidCustomName) {
+            append(" [${target.name}]")
+        }
+        if (target.crew.isNotBlank() && !target.crew.equals("Unknown", ignoreCase = true) && !target.crew.equals("None", ignoreCase = true) && !target.crew.equals("Unassigned", ignoreCase = true)) {
+            append(" [${target.crew.uppercase()}]")
+        }
+    }
 
     BasicAlertDialog(
         onDismissRequest = onDismiss,
@@ -106,7 +121,7 @@ fun TargetSpecsDialog(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "${target.ip} [$displayName]",
+                            text = titleHeaderText,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
@@ -176,7 +191,7 @@ fun TargetSpecsDialog(
 
             InfoGrid(
                 items = listOf(
-                    "Name" to displayName,
+                    "Name" to if (hasValidCustomName) target.name else "N/A",
                     "Indexed By" to target.contributor.ifBlank { "You" },
                     "Crew" to target.crew.ifBlank { "None / Lone" },
                     "Level" to if (target.level > 0) "LVL ${target.level}" else "N/A",
@@ -257,32 +272,71 @@ fun TargetSpecsDialog(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(4.dp))
                     .background(MatrixDarkSurfaceVariant)
-                    .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
-                    .padding(8.dp)
+                    .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(4.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                apps.chunked(2).forEach { rowApps ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                        for ((appName, appLvl) in rowApps) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = appName,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    color = MatrixTextSecondary
+                apps.forEachIndexed { index, (appName, appLvl) ->
+                    val hasLevel = appLvl > 0
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (hasLevel) MatrixDarkBackground else MatrixDarkSurface)
+                            .border(
+                                BorderStroke(0.5.dp, if (hasLevel) MatrixBorder else MatrixBorder.copy(alpha = 0.5f)),
+                                RoundedCornerShape(3.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = String.format(java.util.Locale.US, "%02d.", index + 1),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (hasLevel) MatrixGreenDim else MatrixTextMuted,
+                            modifier = Modifier.width(26.dp)
+                        )
+                        Text(
+                            text = appName,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (hasLevel) MatrixTextPrimary else MatrixTextMuted,
+                            modifier = Modifier.width(155.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "····································",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            color = MatrixBorder,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
+                            overflow = TextOverflow.Clip
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (hasLevel) MatrixGreenDim.copy(alpha = 0.3f) else MatrixDarkSurfaceVariant)
+                                .border(
+                                    BorderStroke(1.dp, if (hasLevel) MatrixGreenPrimary else MatrixBorder),
+                                    RoundedCornerShape(3.dp)
                                 )
-                                Text(
-                                    text = if (appLvl > 0) "LVL $appLvl" else "[--]",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (appLvl > 0) MatrixGreenPrimary else MatrixTextMuted,
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
-                            }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (hasLevel) "LVL $appLvl" else "[--]",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (hasLevel) MatrixGreenGlow else MatrixTextMuted
+                            )
                         }
                     }
                 }

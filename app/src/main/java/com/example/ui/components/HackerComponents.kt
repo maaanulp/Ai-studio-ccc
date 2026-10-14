@@ -281,7 +281,7 @@ fun TerminalLogConsole(
     modifier: Modifier = Modifier,
     crewName: String = "ccc-terminal",
     maxHeight: Int = 160,
-    initiallyExpanded: Boolean = false
+    initiallyExpanded: Boolean = true
 ) {
     var isExpanded by remember { mutableStateOf(initiallyExpanded) }
     val listState = rememberLazyListState()

@@ -106,14 +106,36 @@ fun MainScreen(viewModel: IntelViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Crypt0 Cr3w Central [CCC] [by m0lt0rn]",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MatrixGreenPrimary
-                        )
-                        if (currentProfile.isBlank() || currentProfile.equals("Unassigned", ignoreCase = true)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_ccc_launcher_icon),
+                                contentDescription = "Crypt0 Cr3w Central Emblem",
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .border(BorderStroke(1.dp, MatrixGreenPrimary), androidx.compose.foundation.shape.CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Crypt0 Cr3w Central [CCC]",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MatrixGreenPrimary
+                                )
+                                Text(
+                                    text = "[by m0lt0rn]",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MatrixGreenGlow
+                                )
+                            }
+                        }
+                        if (currentProfile.isBlank() || currentProfile.equals("Unassigned", ignoreCase = true) || currentProfile.equals("Guest", ignoreCase = true) || !isGenAuthenticated) {
                             HackerButton(
                                 text = "[LOG IN]",
                                 onClick = { viewModel.openAuthModal() },
@@ -125,6 +147,8 @@ fun MainScreen(viewModel: IntelViewModel) {
                     Spacer(modifier = Modifier.height(4.dp))
 
                     // Operative profile selector as normal description line (adapts to long usernames)
+                    val isSessionActive = isGenAuthenticated && currentProfile.isNotBlank() && !currentProfile.equals("Guest", ignoreCase = true) && !currentProfile.equals("Unassigned", ignoreCase = true)
+
                     Box {
                         Row(
                             modifier = Modifier
@@ -133,7 +157,7 @@ fun MainScreen(viewModel: IntelViewModel) {
                                 .background(MatrixDarkSurfaceVariant)
                                 .border(BorderStroke(1.dp, MatrixGreenDim), RoundedCornerShape(4.dp))
                                 .clickable {
-                                    if (currentProfile.isBlank() || !isGenAuthenticated) {
+                                    if (!isSessionActive) {
                                         viewModel.openAuthModal()
                                     } else {
                                         showProfileDropdown = true
@@ -145,7 +169,7 @@ fun MainScreen(viewModel: IntelViewModel) {
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = "Active Operative Profile",
-                                tint = MatrixGreenPrimary,
+                                tint = if (isSessionActive) MatrixGreenPrimary else MatrixTextMuted,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -157,11 +181,11 @@ fun MainScreen(viewModel: IntelViewModel) {
                                 color = MatrixTextMuted
                             )
                             Text(
-                                text = if (currentProfile.isNotBlank()) "[$currentProfile] ${if (isCurrentUserAdmin) "[ADMIN]" else ""}".trim() else "[Unassigned]",
+                                text = if (isSessionActive) "[$currentProfile] ${if (isCurrentUserAdmin) "[ADMIN]" else ""}".trim() else "[Guest]",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (currentProfile.isNotBlank()) MatrixGreenPrimary else CyberAmber,
+                                color = if (isSessionActive) MatrixGreenPrimary else MatrixTextMuted,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
@@ -171,7 +195,7 @@ fun MainScreen(viewModel: IntelViewModel) {
                                 text = "▾",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
-                                color = MatrixGreenPrimary
+                                color = if (isSessionActive) MatrixGreenPrimary else MatrixTextMuted
                             )
                         }
 

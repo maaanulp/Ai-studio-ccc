@@ -3,193 +3,174 @@ package com.example.parser
 import com.example.data.model.DatabaseScope
 import com.example.data.model.RaidLogEntity
 import com.example.data.model.TargetEntity
+import java.util.regex.Pattern
 
-data class ParsedRaid(
+data class ParsedTargetLog(
     val ip: String,
     val wallet: String,
-    val stolenCrypto: Long,
+    val stolenAmount: Long,
     val timestampStr: String,
-    val hour: Int
+    val parsedHour: Int = -1
 )
 
 data class ParseResult(
     val targets: List<TargetEntity>,
     val raidLogs: List<RaidLogEntity>,
     val ignoredMaskedCount: Int,
-    val summary: String
+    val summary: String,
+    val terminalOutput: List<String>
 )
 
 object LogParser {
 
-    private val STRICT_IP_REGEX = Regex("""\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b""")
-    private val TIMESTAMP_REGEX = Regex("""\[(\d{1,2}-\d{1,2}\s+(\d{1,2}):(\d{2}))\]""")
-    private val ACCESS_REGEX = Regex("""Accessed device at\s+([\w\.\*:]+)""", RegexOption.IGNORE_CASE)
-    private val STOLE_REGEX = Regex("""Stole\s+([0-9,]+)\s+Crypto from\s+([\w\.\-]+)""", RegexOption.IGNORE_CASE)
+    private val IP_PATTERN = Pattern.compile("""\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b""")
+    private val MASKED_IP_PATTERN = Pattern.compile("""(?i)\b(?:xxx\.xxx\.xxx\.xxx|[x\*]{1,3}\.[x\*]{1,3}\.[x\*]{1,3}\.[x\*]{1,3})\b""")
+    private val WALLET_PATTERN = Pattern.compile("""\b(hx[a-zA-Z0-9\.]{6,}|0x[a-zA-Z0-9\.]{6,}|[a-zA-Z0-9]{4,}\.{3}[a-zA-Z0-9]{4,})\b""")
+    private val STOLEN_PATTERN = Pattern.compile("""(?i)Stole\s+([0-9,]+)\s+Crypto\s+from\s+([^\s\n\r]+)""")
+    private val ACCESSED_PATTERN = Pattern.compile("""(?i)Accessed\s+device\s+at\s+([^\s\n\r]+)""")
+    private val TIMESTAMP_PATTERN = Pattern.compile("""\[(\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2})\]""")
 
-    fun parseLogs(rawText: String, scope: DatabaseScope, contributor: String = ""): ParseResult {
-        val lines = rawText.lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+    fun parseLogs(rawText: String, scope: DatabaseScope, contributor: String): ParseResult {
+        val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val terminalOutput = mutableListOf<String>()
+        terminalOutput.add("[PARSER] Initializing reverse chronological scan on ${lines.size} log entries...")
 
-        val parsedRaids = mutableListOf<ParsedRaid>()
+        val parsedEntries = mutableListOf<ParsedTargetLog>()
         var ignoredMasked = 0
-        val usedIndices = BooleanArray(lines.size)
 
-        // Parse from bottom to top (in Hack EX 2, logs are chronologically inverted: newest at top)
+        var pendingIp: String? = null
+        var pendingIpTime: String? = null
+        var pendingWallet: String? = null
+        var pendingAmount: Long = 0L
+        var pendingStolenTime: String? = null
+
         for (i in lines.indices.reversed()) {
-            if (usedIndices[i]) continue
             val line = lines[i]
 
-            val accessMatch = ACCESS_REGEX.find(line)
-            if (accessMatch != null) {
-                val ip = accessMatch.groupValues[1].trim()
-                if (ip.contains("xxx", ignoreCase = true) || ip.contains("***") || !STRICT_IP_REGEX.matches(ip)) {
-                    ignoredMasked++
-                    usedIndices[i] = true
-                    continue
+            val tsMatcher = TIMESTAMP_PATTERN.matcher(line)
+            val lineTs = if (tsMatcher.find()) tsMatcher.group(1) else "00-00 00:00"
+
+            val isMasked = MASKED_IP_PATTERN.matcher(line).find() || line.contains("xxx.xxx.xxx.xxx", ignoreCase = true)
+            if (isMasked) {
+                ignoredMasked++
+                terminalOutput.add("[SKIP] Masked IP detected at [$lineTs]. Entry ignored.")
+                continue
+            }
+
+            val accMatcher = ACCESSED_PATTERN.matcher(line)
+            if (accMatcher.find()) {
+                val ipCandidate = accMatcher.group(1)
+                val ipClean = IP_PATTERN.matcher(ipCandidate)
+                if (ipClean.find()) {
+                    pendingIp = ipClean.group()
+                    pendingIpTime = lineTs
                 }
-                usedIndices[i] = true
-
-                val timeMatch = TIMESTAMP_REGEX.find(line)
-                val timeStr = timeMatch?.groupValues?.get(1) ?: "00-00 00:00"
-                val hour = timeMatch?.groupValues?.get(2)?.toIntOrNull() ?: 12
-
-                // Primary check: look directly above (i - 1 downTo 0) for the matching Stole line
-                var foundStoleIndex = -1
-                for (j in (i - 1) downTo 0) {
-                    if (usedIndices[j]) continue
-                    val candLine = lines[j]
-                    if (ACCESS_REGEX.containsMatchIn(candLine)) {
-                        val candAccess = ACCESS_REGEX.find(candLine)?.groupValues?.get(1)?.trim() ?: ""
-                        if (candAccess.contains("xxx", ignoreCase = true) || candAccess.contains("***")) {
-                            ignoredMasked++
-                            usedIndices[j] = true
-                            continue // Skip masked IP access line
-                        } else {
-                            break // Hit another valid access line
-                        }
-                    }
-                    if (STOLE_REGEX.containsMatchIn(candLine)) {
-                        foundStoleIndex = j
-                        break
-                    }
+            } else {
+                val ipClean = IP_PATTERN.matcher(line)
+                if (ipClean.find() && !line.contains("Stole", ignoreCase = true)) {
+                    pendingIp = ipClean.group()
+                    pendingIpTime = lineTs
                 }
+            }
 
-                // Secondary check: look below (i + 1 until lines.size)
-                if (foundStoleIndex == -1) {
-                    for (j in (i + 1) until lines.size) {
-                        if (usedIndices[j]) continue
-                        val candLine = lines[j]
-                        if (ACCESS_REGEX.containsMatchIn(candLine)) break
-                        if (STOLE_REGEX.containsMatchIn(candLine)) {
-                            foundStoleIndex = j
-                            break
-                        }
-                    }
-                }
-
-                if (foundStoleIndex != -1) {
-                    usedIndices[foundStoleIndex] = true
-                    val stoleLine = lines[foundStoleIndex]
-                    val stoleMatch = STOLE_REGEX.find(stoleLine)!!
-                    val amount = stoleMatch.groupValues[1].replace(",", "").trim().toLongOrNull() ?: 0L
-                    val wallet = stoleMatch.groupValues[2].trim()
-
-                    parsedRaids.add(
-                        ParsedRaid(
-                            ip = ip,
-                            wallet = wallet,
-                            stolenCrypto = amount,
-                            timestampStr = timeStr,
-                            hour = hour
-                        )
-                    )
+            val stolenMatcher = STOLEN_PATTERN.matcher(line)
+            if (stolenMatcher.find()) {
+                val amtStr = stolenMatcher.group(1).replace(",", "")
+                pendingAmount = amtStr.toLongOrNull() ?: 0L
+                val walletCandidate = stolenMatcher.group(2)
+                val wMatcher = WALLET_PATTERN.matcher(walletCandidate)
+                if (wMatcher.find()) {
+                    pendingWallet = wMatcher.group(1)
                 } else {
-                    parsedRaids.add(
-                        ParsedRaid(
-                            ip = ip,
-                            wallet = "",
-                            stolenCrypto = 0L,
-                            timestampStr = timeStr,
-                            hour = hour
-                        )
-                    )
+                    pendingWallet = walletCandidate
                 }
+                pendingStolenTime = lineTs
+            }
+
+            if (pendingIp != null && pendingWallet != null) {
+                val hour = parseHourFromTimestamp(pendingIpTime ?: pendingStolenTime ?: "")
+                parsedEntries.add(
+                    ParsedTargetLog(
+                        ip = pendingIp,
+                        wallet = pendingWallet,
+                        stolenAmount = pendingAmount,
+                        timestampStr = pendingIpTime ?: pendingStolenTime ?: "00-00 00:00",
+                        parsedHour = hour
+                    )
+                )
+                terminalOutput.add("[MATCH] IP $pendingIp <==> Wallet $pendingWallet | Stolen: $pendingAmount ₡ at [$pendingIpTime]")
+
+                pendingIp = null
+                pendingIpTime = null
+                pendingWallet = null
+                pendingAmount = 0L
+                pendingStolenTime = null
             }
         }
 
-        // Group raids by IP
-        val groupedByIp = parsedRaids.groupBy { it.ip }
+        val groupedByIp = parsedEntries.groupBy { it.ip }
         val targetEntities = mutableListOf<TargetEntity>()
-        val raidEntities = mutableListOf<RaidLogEntity>()
+        val raidLogEntities = mutableListOf<RaidLogEntity>()
 
-        for ((ip, raids) in groupedByIp) {
-            val totalStolen = raids.sumOf { it.stolenCrypto }
-            val hitCount = raids.size
-            val avgPerHit = if (hitCount > 0) totalStolen / hitCount else 0L
+        for ((ip, entries) in groupedByIp) {
+            val totalStolen = entries.sumOf { it.stolenAmount }
+            val hits = entries.size
+            val avg = if (hits > 0) totalStolen / hits else 0L
+            val primaryWallet = entries.firstOrNull { it.wallet.isNotBlank() }?.wallet ?: ""
 
-            val hourCounts = raids.groupingBy { it.hour }.eachCount()
-            val peakHourVal = hourCounts.maxByOrNull { it.value }?.key ?: 12
-            val peakHourStr = String.format("%02d:00", peakHourVal)
-            val primaryWallet = raids.firstOrNull { it.wallet.isNotBlank() }?.wallet ?: ""
+            val hourCounts = entries.filter { it.parsedHour >= 0 }.groupingBy { it.parsedHour }.eachCount()
+            val peakHourNum = hourCounts.maxByOrNull { it.value }?.key ?: -1
+            val peakHourStr = if (peakHourNum >= 0) String.format(java.util.Locale.US, "%02d:00", peakHourNum) else "--:--"
 
             targetEntities.add(
                 TargetEntity(
                     ip = ip,
                     name = "",
-                    level = 0,
-                    fw = 0,
-                    enc = 0,
-                    rep = 0,
-                    score = 0L,
-                    crew = "",
-                    stolenCrypto = totalStolen,
-                    hitCount = hitCount,
-                    avgPerHit = avgPerHit,
-                    crPerHour = totalStolen,
-                    peakHour = peakHourStr,
                     wallet = primaryWallet,
+                    stolenCrypto = totalStolen,
+                    hitCount = hits,
+                    avgPerHit = avg,
+                    peakHour = peakHourStr,
                     scope = scope,
-                    contributor = contributor
+                    contributor = contributor,
+                    lastUpdated = System.currentTimeMillis()
                 )
             )
 
-            for (raid in raids) {
-                raidEntities.add(
+            for (e in entries) {
+                raidLogEntities.add(
                     RaidLogEntity(
-                        ip = raid.ip,
-                        wallet = raid.wallet,
-                        stolenAmount = raid.stolenCrypto,
-                        timestampStr = raid.timestampStr,
-                        parsedHour = raid.hour,
+                        ip = e.ip,
+                        wallet = e.wallet,
+                        stolenAmount = e.stolenAmount,
+                        timestampStr = e.timestampStr,
+                        parsedHour = e.parsedHour,
                         scope = scope
                     )
                 )
             }
         }
 
-        val summary = "[PARSER] Logs processed bottom-to-top. ${targetEntities.size} valid targets extracted."
-        return ParseResult(targetEntities, raidEntities, ignoredMasked, summary)
+        val summary = "[PARSER] Logs processed bottom-to-top. ${targetEntities.size} valid targets extracted. $ignoredMasked masked entries filtered."
+        terminalOutput.add(summary)
+
+        return ParseResult(
+            targets = targetEntities,
+            raidLogs = raidLogEntities,
+            ignoredMaskedCount = ignoredMasked,
+            summary = summary,
+            terminalOutput = terminalOutput
+        )
     }
 
-    val SAMPLE_INPUT_LOGS = """
-[9-22 11:06] Stole 1,337 Crypto from hx4cb5...c605
-[9-22 11:05] Accessed device at 250.96.171.15
-[9-22 11:05] Stole 348 Crypto from hx29d6...8792
-[9-22 11:05] Accessed device at 251.186.156.78
-[9-22 10:42] Stole 2,150 Crypto from hx91a2...f331
-[9-22 10:41] Accessed device at 185.220.101.5
-[9-22 09:15] Stole 890 Crypto from hx73cd...aa12
-[9-22 09:14] Accessed device at 194.67.210.89
-""".trimIndent()
-
-    val SAMPLE_OUTPUT_LOGS = """
-[9-23 8:08] Accessed device at 111.98.13.146
-[9-23 8:08] Stole 485 Crypto from hx51f3...933d
-[9-23 8:08] Accessed device at xxx.xxx.xxx.xxx
-[9-23 8:08] Stole 259 Crypto from hxfa9c...ce4b
-[9-23 8:08] Accessed device at 129.101.254.235
-[9-23 8:07] Stole 412 Crypto from hxa93a...9cc6
-[9-23 8:07] Accessed device at 10.76.96.9
-""".trimIndent()
+    private fun parseHourFromTimestamp(ts: String): Int {
+        val parts = ts.split(" ")
+        if (parts.size >= 2) {
+            val timeParts = parts[1].split(":")
+            if (timeParts.isNotEmpty()) {
+                return timeParts[0].toIntOrNull() ?: -1
+            }
+        }
+        return -1
+    }
 }

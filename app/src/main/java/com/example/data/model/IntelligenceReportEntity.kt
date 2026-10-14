@@ -6,16 +6,17 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "intelligence_reports")
 data class IntelligenceReportEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val title: String,
     val targetIp: String,
     val targetName: String = "",
-    val classification: String = "CONFIDENTIAL", // e.g. "CONFIDENTIAL", "TOP SECRET", "RESTRICTED"
-    val threatLevel: String = "MODERATE",        // "LOW", "MODERATE", "HIGH", "CRITICAL"
-    val scope: DatabaseScope = DatabaseScope.INTERNAL,
-    val executiveSummary: String,
-    val defenseAnalysis: String,
-    val financialPayload: String,
-    val recommendedVector: String,
-    val authorOperative: String = "",
-    val generatedTimestamp: Long = System.currentTimeMillis()
+    val targetCrew: String = "",
+    val targetLevel: Int = 1,
+    val firewallLvl: Int = 1,
+    val encryptorLvl: Int = 1,
+    val totalStolen: Long = 0L,
+    val hitCount: Int = 0,
+    val avgStolen: Long = 0L,
+    val peakHour: String = "--:--",
+    val generatedBy: String = "OPERATIVE",
+    val reportJson: String = "{}",
+    val createdAt: Long = System.currentTimeMillis()
 )

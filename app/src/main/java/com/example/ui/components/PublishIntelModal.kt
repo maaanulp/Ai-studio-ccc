@@ -76,7 +76,7 @@ fun PublishIntelModal(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isPublishing by remember { mutableStateOf(false) }
 
-    val activeHandle = currentProfile.trim().ifBlank { "m0lt0rn" }
+    val activeHandle = currentProfile.trim().ifBlank { "Unassigned" }
     val activeCrew = crewIdInput.trim().ifBlank { "CCC" }
 
     Dialog(onDismissRequest = onDismiss) {

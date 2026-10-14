@@ -14,9 +14,9 @@ data class TargetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val ip: String,
     val name: String = "",
-    val level: Int = 1,
-    val fw: Int = 1,                 // Firewall level
-    val enc: Int = 1,                // Encryptor level
+    val level: Int = 0,
+    val fw: Int = 0,                 // Firewall level (0 = unscanned/neutral)
+    val enc: Int = 0,                // Encryptor level (0 = unscanned/neutral)
     val rep: Int = 0,                // Reputation
     val score: Long = 0L,
     val crew: String = "",

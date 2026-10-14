@@ -4,40 +4,50 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.local.AppDatabase
 import com.example.data.repository.IntelRepository
-import com.example.ui.screens.MainScreen
-import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.screens.*
+import com.example.ui.theme.*
 import com.example.ui.viewmodel.IntelViewModel
 
+enum class NavigationScreen(val title: String, val icon: ImageVector) {
+    DATABASE("INTEL DB", Icons.Default.Storage),
+    PARSER("LOGS", Icons.Default.Terminal),
+    OCR("VISION OCR", Icons.Default.DocumentScanner),
+    METRICS("TELEMETRY", Icons.Default.BarChart),
+    FEED("FEED", Icons.Default.Forum)
+}
+
 class MainActivity : ComponentActivity() {
-
-    private val viewModel: IntelViewModel by viewModels {
-        object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                val database = AppDatabase.getInstance(applicationContext)
-                val repository = IntelRepository(
-                    targetDao = database.targetDao(),
-                    reportDao = database.intelligenceReportDao(),
-                    logEntryDao = database.logEntryDao(),
-                    ocrResultDao = database.ocrTextResultDao(),
-                    feedDao = database.feedDao(),
-                    auditLogDao = database.auditLogDao()
-                )
-                return IntelViewModel(application, repository) as T
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val db = AppDatabase.getDatabase(applicationContext)
+        val repository = IntelRepository(
+            targetDao = db.targetDao(),
+            reportDao = db.intelligenceReportDao(),
+            logEntryDao = db.logEntryDao(),
+            ocrResultDao = db.ocrTextResultDao(),
+            feedDao = db.feedDao(),
+            auditLogDao = db.auditLogDao()
+        )
+        val viewModel = IntelViewModel(application, repository)
+
         setContent {
-            MyApplicationTheme {
+            Crypt0Cr3wTheme {
                 MainScreen(viewModel = viewModel)
             }
         }

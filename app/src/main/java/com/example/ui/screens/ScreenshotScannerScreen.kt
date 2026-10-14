@@ -428,22 +428,6 @@ fun ScreenshotScannerScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = "REAL-TIME OCR TERMINAL LOGS",
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = MatrixGreenDim
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            TerminalLogConsole(
-                logs = state.terminalLogs,
-                crewName = crewId,
-                maxHeight = 150
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             TerminalContainer(
                 title = "FALLBACK: MANUAL INTEL ENTRY",
                 trailingBadge = if (state.isManualExpanded) "EXPANDED" else "COLLAPSED"
@@ -545,6 +529,24 @@ fun ScreenshotScannerScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Real-Time OCR Terminal located at the bottom of the main view and expanded by default
+            Text(
+                text = "REAL-TIME OCR TERMINAL (TARGETS & SOFTWARE)",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MatrixGreenDim
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            TerminalLogConsole(
+                logs = state.terminalLogs,
+                crewName = crewId,
+                maxHeight = 160,
+                initiallyExpanded = true
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -604,8 +606,9 @@ private fun GeminiExtractionSummaryCard(
     onExportInternal: () -> Unit,
     onUploadOnlineGeneral: () -> Unit
 ) {
+    val isApps = result.screenshotType == "APPS"
     TerminalContainer(
-        title = "OCR LOG EXTRACTION SUMMARY",
+        title = if (isApps) "OCR SOFTWARE EXTRACTION SUMMARY" else "OCR TARGET DOSSIER SUMMARY",
         trailingBadge = if (result.isSuccess) "FORMATTED FOR DB" else "EXTRACTION FAILED"
     ) {
         Column(
@@ -646,8 +649,22 @@ private fun GeminiExtractionSummaryCard(
                     )
                 }
 
+                val softwareCount = result.extractedTarget?.let {
+                    listOf(
+                        it.antivirusLvl, it.spamLvl, it.rootkitLvl, it.firewallAppLvl,
+                        it.bypasserLvl, it.passwordCrackerLvl, it.passwordEncryptorLvl,
+                        it.proxyLvl, it.traceLvl, it.keygenLvl, it.siphonLvl
+                    ).count { lvl -> lvl > 0 }
+                } ?: 0
+
+                val counterText = if (isApps) {
+                    "TARGETS: 1 | SOFTWARE: $softwareCount/11"
+                } else {
+                    "TARGETS: $pendingTargetsCount | SOFTWARE: $softwareCount/11"
+                }
+
                 Text(
-                    text = "TARGETS: $pendingTargetsCount | LOGS: $pendingLogsCount",
+                    text = counterText,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,

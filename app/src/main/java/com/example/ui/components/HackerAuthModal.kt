@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -27,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -66,20 +68,33 @@ fun HackerAuthModal(
             .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(6.dp))
             .testTag("hacker_auth_modal"),
         title = {
-            Column {
-                Text(
-                    text = "> ACCESO Y REGISTRO DE OPERATIVO",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MatrixGreenPrimary
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_ccc_launcher_icon),
+                    contentDescription = "Crypt0 Cr3w Central Emblem",
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .border(BorderStroke(1.dp, MatrixGreenPrimary), androidx.compose.foundation.shape.CircleShape)
                 )
-                Text(
-                    text = "Autenticación segura por Usuario y Contraseña // Sincronización Supabase",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    color = MatrixTextMuted
-                )
+                Column {
+                    Text(
+                        text = "> OPERATIVE ACCESS & REGISTRATION",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MatrixGreenPrimary
+                    )
+                    Text(
+                        text = "Crypt0 Cr3w Central [CCC] // Supabase Sync",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        color = MatrixTextMuted
+                    )
+                }
             }
         },
         text = {
@@ -89,7 +104,7 @@ fun HackerAuthModal(
             ) {
                 if (currentProfile.isNotBlank() && !currentProfile.equals("Unassigned", ignoreCase = true)) {
                     Text(
-                        text = "• OPERATIVO ACTIVO: [$currentProfile]",
+                        text = "• ACTIVE OPERATIVE: [$currentProfile]",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -97,17 +112,17 @@ fun HackerAuthModal(
                     )
                 }
 
-                // Usuario / Operativo Handle Input
+                // Username / Operative Handle Input
                 OutlinedTextField(
                     value = operativeInput,
                     onValueChange = {
                         operativeInput = it
                         if (it.isNotBlank()) inputError = null
                     },
-                    label = { Text("USUARIO / OPERADOR *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                    label = { Text("USERNAME / OPERATIVE HANDLE *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
                     placeholder = {
                         Text(
-                            "Nombre de usuario (ej. Operador_01)",
+                            "Operative username (e.g. Operative_01)",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             color = MatrixTextMuted
@@ -127,14 +142,14 @@ fun HackerAuthModal(
                         .testTag("operative_handle_input")
                 )
 
-                // Contraseña / Password Input
+                // Password Input
                 OutlinedTextField(
                     value = passcode,
                     onValueChange = {
                         passcode = it
                         if (it.isNotBlank()) inputError = null
                     },
-                    label = { Text("CONTRASEÑA *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
+                    label = { Text("PASSWORD *", fontFamily = FontFamily.Monospace, fontSize = 9.sp) },
                     placeholder = { Text("••••••••", fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = MatrixTextMuted) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
@@ -150,7 +165,7 @@ fun HackerAuthModal(
                         .testTag("operative_passcode_input")
                 )
 
-                // "Recordar sesión" Checkbox Row
+                // "Remember session" Checkbox Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -168,7 +183,7 @@ fun HackerAuthModal(
                         )
                     )
                     Text(
-                        text = "Recordar sesión (Manener acceso activo)",
+                        text = "Remember session (Keep access active)",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
@@ -190,16 +205,16 @@ fun HackerAuthModal(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     HackerButton(
-                        text = "[INICIAR SESIÓN]",
+                        text = "[LOGIN]",
                         onClick = {
                             val handle = operativeInput.trim()
                             val pw = passcode.trim()
                             if (handle.isBlank()) {
-                                inputError = "El campo USUARIO es obligatorio."
+                                inputError = "Username is required."
                                 return@HackerButton
                             }
                             if (pw.isBlank()) {
-                                inputError = "La CONTRASEÑA es obligatoria."
+                                inputError = "Password is required."
                                 return@HackerButton
                             }
                             viewModel.loginOperativeLocal(handle, pw, rememberSession = rememberSession) { success, msg ->
@@ -213,16 +228,16 @@ fun HackerAuthModal(
                     )
 
                     HackerButton(
-                        text = "[REGISTRAR M0LTON]",
+                        text = "[REGISTER]",
                         onClick = {
                             val handle = operativeInput.trim()
                             val pw = passcode.trim()
                             if (handle.isBlank() || pw.isBlank()) {
-                                inputError = "Usuario y contraseña requeridos para registro."
+                                inputError = "Username and password are required for registration."
                                 return@HackerButton
                             }
                             viewModel.loginOperativeLocal(handle, pw, rememberSession = rememberSession) { success, msg ->
-                                Toast.makeText(context, "Operador $handle registrado y sincronizado en Supabase.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Operative $handle registered and synced with Supabase.", Toast.LENGTH_SHORT).show()
                                 if (success) onDismiss()
                             }
                         },
@@ -234,7 +249,7 @@ fun HackerAuthModal(
         },
         confirmButton = {
             HackerButton(
-                text = "CERRAR",
+                text = "[CLOSE]",
                 onClick = onDismiss
             )
         }

@@ -73,7 +73,7 @@ data class SupabaseFeedPostDto(
     val id: String? = null,
     val scope: String = "CREW",
     val crewId: String = "CCC",
-    val author: String = "m0lt0rn",
+    val author: String = "Unassigned",
     val title: String = "",
     val tag: String = "INTEL",
     val content: String = "",
@@ -85,7 +85,7 @@ data class SupabaseFeedPostDto(
 data class SupabaseFeedCommentDto(
     val id: String? = null,
     val postId: String? = null,
-    val author: String = "m0lt0rn",
+    val author: String = "Unassigned",
     val content: String = "",
     val createdAt: String? = null
 )

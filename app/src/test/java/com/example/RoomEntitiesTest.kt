@@ -18,24 +18,24 @@ class RoomEntitiesTest {
             id = 1L,
             targetIp = "192.168.1.100",
             targetName = "Target Alpha",
-            title = "CLASSIFIED DOSSIER // Target Alpha [192.168.1.100]",
-            classification = "TOP SECRET // EYES ONLY",
-            threatLevel = "CRITICAL",
-            defenseAnalysis = "FW: 65 (Hardware Level 65) | ENC: 55",
-            financialPayload = "Total Stolen: 150000 ₡ across 10 ops | Peak Rate: 25000 ₡/hr",
-            recommendedVector = "Deploy High-tier Bypasser against FW: 65, followed by Password Decryptor.",
-            executiveSummary = "High-priority node under crew ShadowOps control.",
-            scope = DatabaseScope.INTERNAL,
-            authorOperative = "CyberOperative",
-            generatedTimestamp = 1695484800000L
+            targetCrew = "ShadowOps",
+            targetLevel = 34,
+            firewallLvl = 14,
+            encryptorLvl = 12,
+            totalStolen = 150000L,
+            hitCount = 10,
+            avgStolen = 15000L,
+            peakHour = "14:00",
+            generatedBy = "CyberOperative",
+            reportJson = "{}",
+            createdAt = 1695484800000L
         )
 
         assertEquals("192.168.1.100", report.targetIp)
         assertEquals("Target Alpha", report.targetName)
-        assertEquals("CRITICAL", report.threatLevel)
-        assertEquals(DatabaseScope.INTERNAL, report.scope)
-        assertEquals("CyberOperative", report.authorOperative)
-        assertTrue(report.defenseAnalysis.contains("FW: 65"))
+        assertEquals("ShadowOps", report.targetCrew)
+        assertEquals(14, report.firewallLvl)
+        assertEquals("CyberOperative", report.generatedBy)
     }
 
     @Test

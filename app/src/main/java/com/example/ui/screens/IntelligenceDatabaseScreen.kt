@@ -67,6 +67,7 @@ import com.example.ui.components.HackerSearchField
 import com.example.ui.components.RedPurgeButton
 import com.example.ui.components.TerminalContainer
 import com.example.ui.theme.CyberAmber
+import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.MatrixBorder
 import com.example.ui.theme.MatrixBorderBright
 import com.example.ui.theme.MatrixDarkBackground
@@ -834,7 +835,7 @@ fun IntelligenceDatabaseScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     HackerButton(
-                                        text = "🔍 AUDITORÍA DE OPERADORES",
+                                        text = "🔍 OPERATIVE AUDIT LOGS",
                                         onClick = { showAuditLogModal = true },
                                         testTag = "audit_logs_btn"
                                     )
@@ -1080,7 +1081,9 @@ fun IntelGridTable(
                 )
             }
         } else {
-            // Visual Tactical Expandable Grid (100% width, No horizontal scroll needed)
+            // Visual Tactical Expandable Grid with exclusive accordion expansion
+            var expandedTargetId by remember { mutableStateOf<Long?>(null) }
+
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1089,6 +1092,10 @@ fun IntelGridTable(
                     ExpandableTargetRow(
                         target = target,
                         isSelected = selectedTargetIds.contains(target.id),
+                        isExpanded = (expandedTargetId == target.id),
+                        onToggleExpand = {
+                            expandedTargetId = if (expandedTargetId == target.id) null else target.id
+                        },
                         onToggleSelect = { onToggleSelectTarget(target.id) },
                         onSelectTarget = { onSelectTarget(target) }
                     )
@@ -1102,22 +1109,27 @@ fun IntelGridTable(
 private fun ExpandableTargetRow(
     target: TargetEntity,
     isSelected: Boolean,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
     onToggleSelect: () -> Unit,
     onSelectTarget: () -> Unit
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val hasValidCustomName = target.name.isNotBlank() &&
             !target.name.equals(target.ip, ignoreCase = true) &&
             !target.name.equals("Target-${target.ip}", ignoreCase = true) &&
-            !target.name.equals("Host-${target.ip}", ignoreCase = true) &&
+            !target.name.startsWith("Host-") &&
+            !target.name.startsWith("Host_") &&
             !target.name.startsWith("Pending_IP_") &&
-            !target.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+            !target.name.equals("UNASSIGNED TARGET", ignoreCase = true) &&
+            !target.name.equals("UNASSIGNED", ignoreCase = true) &&
+            !target.name.equals("Unknown", ignoreCase = true)
 
-    val displayName = if (hasValidCustomName) target.name else "UNASSIGNED TARGET"
-    val isFwVerified = target.fw > 0
-    val isEncVerified = target.enc > 0
+    val effectiveFw = if (target.firewallAppLvl > 0) target.firewallAppLvl else target.fw
+    val isFwVerified = effectiveFw > 0
+    val effectiveEnc = if (target.passwordEncryptorLvl > 0) target.passwordEncryptorLvl else target.enc
+    val isEncVerified = effectiveEnc > 0
 
     Box(
         modifier = Modifier
@@ -1131,17 +1143,17 @@ private fun ExpandableTargetRow(
                 ),
                 RoundedCornerShape(6.dp)
             )
-            .clickable { isExpanded = !isExpanded }
+            .clickable { onToggleExpand() }
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Main Top Row: IP + [Name / UNASSIGNED TARGET] | FW + ENC + Chevron
+            // Main Top Row: IP + [Name / UNASSIGNED TARGET] + [CREW] | FW + ENC + Chevron
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // IP & Name
+                // IP & Name & Crew
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1197,15 +1209,28 @@ private fun ExpandableTargetRow(
                             )
                         }
                     }
-                    Text(
-                        text = "[$displayName]",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (hasValidCustomName) MatrixGreenDim else MatrixTextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (hasValidCustomName) {
+                        Text(
+                            text = "[${target.name}]",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MatrixGreenDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (target.crew.isNotBlank() && !target.crew.equals("None", ignoreCase = true) && !target.crew.equals("Unknown", ignoreCase = true) && !target.crew.equals("Unassigned", ignoreCase = true)) {
+                        Text(
+                            text = "[${target.crew.uppercase()}]",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MatrixGreenDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 // FW & ENC Badges (Gray ? if unverified) + Chevron
@@ -1221,7 +1246,7 @@ private fun ExpandableTargetRow(
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (isFwVerified) "FW ${target.fw}" else "FW ?",
+                            text = if (isFwVerified) "FW $effectiveFw" else "FW ?",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -1237,7 +1262,7 @@ private fun ExpandableTargetRow(
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (isEncVerified) "ENC ${target.enc}" else "ENC ?",
+                            text = if (isEncVerified) "ENC $effectiveEnc" else "ENC ?",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -1410,11 +1435,121 @@ private fun ExpandableTargetRow(
                     if (target.crew.isNotBlank() && target.crew != "Unknown" && target.crew != "None") {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "CREW AFFILIATION: [${target.crew}]",
+                            text = "CREW AFFILIATION: [${target.crew.uppercase()}]",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
-                            color = MatrixGreenPrimary
+                            color = CyberCyan
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Software Specifications Matrix
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "INSTALLED SOFTWARE MATRIX (11 APPS)",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MatrixGreenDim
+                        )
+                        val confirmedApps = listOf(
+                            target.antivirusLvl, target.spamLvl, target.rootkitLvl,
+                            if (target.firewallAppLvl > 0) target.firewallAppLvl else target.fw,
+                            target.bypasserLvl, target.passwordCrackerLvl,
+                            if (target.passwordEncryptorLvl > 0) target.passwordEncryptorLvl else target.enc,
+                            target.proxyLvl, target.traceLvl, target.keygenLvl, target.siphonLvl
+                        ).count { it > 0 }
+                        Text(
+                            text = "$confirmedApps/11 INDEXED",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (confirmedApps == 11) MatrixGreenPrimary else CyberAmber
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MatrixDarkBackground)
+                            .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
+                            .padding(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        val softwareList = listOf(
+                            "Antivirus" to target.antivirusLvl,
+                            "Spam" to target.spamLvl,
+                            "Rootkit" to target.rootkitLvl,
+                            "Firewall" to (if (target.firewallAppLvl > 0) target.firewallAppLvl else target.fw),
+                            "Bypasser" to target.bypasserLvl,
+                            "Password Cracker" to target.passwordCrackerLvl,
+                            "Password Encryptor" to (if (target.passwordEncryptorLvl > 0) target.passwordEncryptorLvl else target.enc),
+                            "Proxy" to target.proxyLvl,
+                            "Trace" to target.traceLvl,
+                            "Keygen" to target.keygenLvl,
+                            "Siphon" to target.siphonLvl
+                        )
+
+                        softwareList.forEachIndexed { sIdx, (sName, sLvl) ->
+                            val hasLvl = sLvl > 0
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = String.format(java.util.Locale.US, "%02d.", sIdx + 1),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 9.sp,
+                                    color = MatrixBorder,
+                                    modifier = Modifier.width(22.dp)
+                                )
+                                Text(
+                                    text = sName,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hasLvl) MatrixTextPrimary else MatrixTextMuted,
+                                    modifier = Modifier.width(135.dp),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "····································",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 8.sp,
+                                    color = MatrixBorder,
+                                    maxLines = 1,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 2.dp),
+                                    overflow = TextOverflow.Clip
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(if (hasLvl) MatrixGreenDim.copy(alpha = 0.25f) else MatrixDarkSurfaceVariant)
+                                        .border(
+                                            BorderStroke(0.5.dp, if (hasLvl) MatrixGreenPrimary else MatrixBorder),
+                                            RoundedCornerShape(2.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = if (hasLvl) "LVL $sLvl" else "[-]",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (hasLvl) MatrixGreenGlow else MatrixTextMuted
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

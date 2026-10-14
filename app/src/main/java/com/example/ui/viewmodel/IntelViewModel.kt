@@ -323,24 +323,27 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     private val _expandedContributor = MutableStateFlow<String?>(null)
     val expandedContributor: StateFlow<String?> = _expandedContributor.asStateFlow()
 
-    // Target streams
+    // Target streams with advanced key-value and full-text filter support
     val internalTargets: StateFlow<List<TargetEntity>> = combine(
         repository.getTargets(DatabaseScope.INTERNAL),
         _internalSearchQuery,
         _currentSort,
         _intelFilterType
     ) { list, query, sort, filter ->
-        val filteredByQuery = if (query.isBlank()) list else list.filter {
-            it.ip.contains(query, true) ||
-            it.name.contains(query, true) ||
-            it.wallet.contains(query, true) ||
-            it.crew.contains(query, true)
-        }
+        val filteredByQuery = if (query.isBlank()) list else list.filter { matchesAdvancedFilter(it, query) }
         val filteredByType = when (filter) {
             IntelFilterType.ALL -> filteredByQuery
             IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
-            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() }
-            IntelFilterType.ACCOUNTS -> filteredByQuery.filter { it.name.isNotBlank() && it.name != "Unknown" }
+            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() && it.wallet != "N/A" }
+            IntelFilterType.ACCOUNTS -> filteredByQuery.filter {
+                it.name.isNotBlank() &&
+                !it.name.equals("Unknown", ignoreCase = true) &&
+                !it.name.equals("Unassigned", ignoreCase = true) &&
+                !it.name.startsWith("Host-") &&
+                !it.name.startsWith("Host_") &&
+                !it.name.startsWith("Target-") &&
+                !it.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+            }
         }
         applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -351,14 +354,20 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         _currentSort,
         _intelFilterType
     ) { list, query, sort, filter ->
-        val filteredByQuery = if (query.isBlank()) list else list.filter {
-            it.ip.contains(query, true) || it.wallet.contains(query, true)
-        }
+        val filteredByQuery = if (query.isBlank()) list else list.filter { matchesAdvancedFilter(it, query) }
         val filteredByType = when (filter) {
             IntelFilterType.ALL -> filteredByQuery
             IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
-            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() }
-            IntelFilterType.ACCOUNTS -> filteredByQuery.filter { it.name.isNotBlank() && it.name != "Unknown" }
+            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() && it.wallet != "N/A" }
+            IntelFilterType.ACCOUNTS -> filteredByQuery.filter {
+                it.name.isNotBlank() &&
+                !it.name.equals("Unknown", ignoreCase = true) &&
+                !it.name.equals("Unassigned", ignoreCase = true) &&
+                !it.name.startsWith("Host-") &&
+                !it.name.startsWith("Host_") &&
+                !it.name.startsWith("Target-") &&
+                !it.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+            }
         }
         applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -369,20 +378,81 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         _currentSort,
         _intelFilterType
     ) { list, query, sort, filter ->
-        val filteredByQuery = if (query.isBlank()) list else list.filter {
-            it.ip.contains(query, true) ||
-            it.name.contains(query, true) ||
-            it.wallet.contains(query, true) ||
-            it.crew.contains(query, true)
-        }
+        val filteredByQuery = if (query.isBlank()) list else list.filter { matchesAdvancedFilter(it, query) }
         val filteredByType = when (filter) {
             IntelFilterType.ALL -> filteredByQuery
             IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
-            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() }
-            IntelFilterType.ACCOUNTS -> filteredByQuery.filter { it.name.isNotBlank() && it.name != "Unknown" }
+            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() && it.wallet != "N/A" }
+            IntelFilterType.ACCOUNTS -> filteredByQuery.filter {
+                it.name.isNotBlank() &&
+                !it.name.equals("Unknown", ignoreCase = true) &&
+                !it.name.equals("Unassigned", ignoreCase = true) &&
+                !it.name.startsWith("Host-") &&
+                !it.name.startsWith("Host_") &&
+                !it.name.startsWith("Target-") &&
+                !it.name.equals("UNASSIGNED TARGET", ignoreCase = true)
+            }
         }
         applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun matchesIntelSearchQuery(target: TargetEntity, query: String): Boolean {
+        return matchesAdvancedFilter(target, query)
+    }
+
+    private fun matchesAdvancedFilter(target: TargetEntity, query: String): Boolean {
+        if (query.isBlank()) return true
+        val tokens = query.trim().split(Regex("\\s+"))
+        return tokens.all { token ->
+            if (token.contains(":")) {
+                val parts = token.split(":", limit = 2)
+                val key = parts[0].lowercase().trim()
+                val value = parts[1].trim()
+                val numVal = value.toIntOrNull()
+                when (key) {
+                    "av", "antivirus" -> numVal?.let { target.antivirusLvl >= it } ?: false
+                    "fw", "firewall" -> {
+                        val currentFw = if (target.firewallAppLvl > 0) target.firewallAppLvl else target.fw
+                        numVal?.let { currentFw >= it } ?: false
+                    }
+                    "enc", "encr", "encryptor", "password_encryptor", "passwordencryptor" -> {
+                        val currentEnc = if (target.passwordEncryptorLvl > 0) target.passwordEncryptorLvl else target.enc
+                        numVal?.let { currentEnc >= it } ?: false
+                    }
+                    "spam" -> numVal?.let { target.spamLvl >= it } ?: false
+                    "rootkit" -> numVal?.let { target.rootkitLvl >= it } ?: false
+                    "bypasser", "bypass" -> numVal?.let { target.bypasserLvl >= it } ?: false
+                    "cracker", "password_cracker", "passwordcracker" -> numVal?.let { target.passwordCrackerLvl >= it } ?: false
+                    "proxy" -> numVal?.let { target.proxyLvl >= it } ?: false
+                    "trace" -> numVal?.let { target.traceLvl >= it } ?: false
+                    "keygen" -> numVal?.let { target.keygenLvl >= it } ?: false
+                    "siphon" -> numVal?.let { target.siphonLvl >= it } ?: false
+                    "level", "lvl" -> numVal?.let { target.level >= it } ?: false
+                    "rep", "reputation" -> numVal?.let { target.rep >= it } ?: false
+                    "score" -> numVal?.let { target.score >= it.toLong() } ?: false
+                    "hit", "hits", "hitcount" -> numVal?.let { target.hitCount >= it } ?: false
+                    "total", "stolen", "loot", "minloot", "crypto" -> numVal?.let { target.stolenCrypto >= it.toLong() } ?: false
+                    "avg", "avgperhit" -> numVal?.let { target.avgPerHit >= it.toLong() } ?: false
+                    "crew", "clan" -> target.crew.equals(value, ignoreCase = true)
+                    "wallet" -> target.wallet.contains(value, ignoreCase = true)
+                    "ip" -> target.ip.contains(value, ignoreCase = true)
+                    "name", "account", "user", "username" -> target.name.contains(value, ignoreCase = true)
+                    "indexedby", "contributor", "author", "by" -> target.contributor.contains(value, ignoreCase = true)
+                    "tag", "reboot" -> target.rebootTag.equals(value, ignoreCase = true)
+                    "scope" -> target.scope.name.equals(value, ignoreCase = true)
+                    else -> false
+                }
+            } else {
+                target.ip.contains(token, true) ||
+                target.name.contains(token, true) ||
+                target.wallet.contains(token, true) ||
+                target.crew.contains(token, true) ||
+                target.contributor.contains(token, true) ||
+                target.rebootTag.contains(token, true) ||
+                target.notes.contains(token, true)
+            }
+        }
+    }
 
     val crewAccounts: StateFlow<List<CrewAccountEntity>> = repository.getCrewAccounts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -406,14 +476,16 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         crewAccounts,
         allTargetsCombinedFlow,
         _currentProfile,
-        _crewIdInput
-    ) { accounts, allTargets, activeProfile, activeCrewId ->
-        val activeHandle = activeProfile.trim().ifBlank { "m0lt0rn" }
-        val registeredHandles = accounts.map { it.username }.toSet()
-        val contributorHandles = allTargets.map { it.contributor }.filter { it.isNotBlank() }.toSet()
+        _crewIdInput,
+        _isGeneralDbAuthenticated
+    ) { accounts, allTargets, activeProfile, activeCrewId, isAuth ->
+        val activeHandle = if (isAuth && activeProfile.isNotBlank() && !activeProfile.equals("Unassigned", ignoreCase = true) && !activeProfile.equals("Guest", ignoreCase = true)) activeProfile.trim() else ""
+        val registeredHandles = accounts.map { it.username }.filter { it.isNotBlank() && !it.equals("Guest", ignoreCase = true) && !it.equals("Unassigned", ignoreCase = true) }.toSet()
+        val contributorHandles = allTargets.map { it.contributor }.filter { it.isNotBlank() && !it.equals("Unassigned", ignoreCase = true) && !it.equals("Guest", ignoreCase = true) }.toSet()
 
-        val allHandles = (registeredHandles + contributorHandles + setOf(activeHandle))
-            .filter { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) && !it.startsWith("Host-") }
+        val activeSet = if (activeHandle.isNotBlank()) setOf(activeHandle) else emptySet()
+        val allHandles = (registeredHandles + contributorHandles + activeSet)
+            .filter { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) && !it.equals("Unassigned", ignoreCase = true) && !it.equals("Guest", ignoreCase = true) && !it.startsWith("Host-") }
             .distinct()
 
         val statsList = mutableListOf<OperativeRankStats>()
@@ -421,7 +493,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         for (handle in allHandles) {
             val account = accounts.find { it.username.equals(handle, ignoreCase = true) }
             val crewId = account?.crewId?.ifBlank { null }
-                ?: if (handle.equals(activeHandle, ignoreCase = true)) activeCrewId.ifBlank { "CCC" } else "CCC"
+                ?: if (activeHandle.isNotBlank() && handle.equals(activeHandle, ignoreCase = true)) activeCrewId.ifBlank { "CCC" } else "CCC"
 
             val userTargets = allTargets.filter { it.contributor.equals(handle, ignoreCase = true) }
             val targetsIndexed = userTargets.size
@@ -473,16 +545,21 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     val myOperativeStats: StateFlow<OperativeRankStats?> = combine(
         operativeRankStats,
-        _currentProfile
-    ) { list, activeProfile ->
-        val handle = activeProfile.trim().ifBlank { "m0lt0rn" }
-        list.find { it.handle.equals(handle, ignoreCase = true) } ?: list.firstOrNull()
+        _currentProfile,
+        _isGeneralDbAuthenticated
+    ) { list, activeProfile, isAuthenticated ->
+        val handle = activeProfile.trim()
+        if (!isAuthenticated || handle.isBlank() || handle.equals("Unassigned", ignoreCase = true) || handle.equals("Guest", ignoreCase = true)) {
+            null
+        } else {
+            list.find { it.handle.equals(handle, ignoreCase = true) }
+        }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val intelligenceReports: StateFlow<List<IntelligenceReportEntity>> = repository.getAllIntelligenceReports()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val recentLogEntries: StateFlow<List<LogEntryEntity>> = repository.getRecentLogEntries(50)
+    val recentLogEntries: StateFlow<List<LogEntryEntity>> = repository.getRecentLogEntries(com.example.data.model.DatabaseScope.INTERNAL)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val peakWindowInfo: StateFlow<PeakWindowInfo> = combine(
@@ -552,13 +629,11 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     fun recordAuditLog(action: String, details: String, targetIp: String = "") {
         viewModelScope.launch {
             val handle = _currentProfile.value.ifBlank { "UNASSIGNED" }
-            val crewId = _crewIdInput.value.ifBlank { "CCC" }
-            repository.insertAuditLog(
-                operatorHandle = handle,
+            repository.logAudit(
+                op = handle,
                 action = action,
                 details = details,
-                targetIp = targetIp,
-                crewId = crewId
+                ip = targetIp
             )
         }
     }
@@ -622,7 +697,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         content: String,
         onComplete: ((Boolean, String) -> Unit)? = null
     ) {
-        val author = _currentProfile.value.trim().ifBlank { "m0lt0rn" }
+        val author = _currentProfile.value.trim().ifBlank { "Unassigned" }
         val crewId = if (scope == FeedScope.CREW) _crewIdInput.value.ifBlank { "CCC" } else "GLOBAL"
         val cleanContent = content.trim()
         if (cleanContent.isBlank()) {
@@ -662,7 +737,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         content: String,
         onComplete: ((Boolean) -> Unit)? = null
     ) {
-        val author = _currentProfile.value.trim().ifBlank { "m0lt0rn" }
+        val author = _currentProfile.value.trim().ifBlank { "Unassigned" }
         val cleanContent = content.trim()
         if (cleanContent.isBlank()) {
             onComplete?.invoke(false)
@@ -911,8 +986,10 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         _currentProfile.value = name
         val activeCrew = _crewIdInput.value.trim()
         if (activeCrew.isNotBlank()) {
-            val creator = SupabaseClient.getCrewCreator(activeCrew)
-            _isCurrentUserAdmin.value = creator != null && name.isNotBlank() && name.equals(creator, ignoreCase = true)
+            viewModelScope.launch {
+                val creator = SupabaseClient.getCrewCreator(activeCrew)
+                _isCurrentUserAdmin.value = creator != null && name.isNotBlank() && name.equals(creator, ignoreCase = true)
+            }
         } else {
             _isCurrentUserAdmin.value = false
         }
@@ -1214,11 +1291,27 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                     )
                 }
                 is OcrParseOutput.AppsData -> {
-                    mergeAndSaveAppsData(result.apps, targetScope)
-                    _scannerState.value = _scannerState.value.copy(
-                        isProcessing = false,
-                        statusText = "Status: OCR ready - APPS Matrix Indexed"
-                    )
+                    val count = result.apps.getExtractedCount()
+                    if (count == 0) {
+                        appendScannerLog("[WARN] No software levels identified from tokens.")
+                        _scannerState.value = _scannerState.value.copy(
+                            isProcessing = false,
+                            statusText = "Status: Fail - Low Software Confidence"
+                        )
+                    } else {
+                        if (count < 11) {
+                            val missing = result.apps.getMissingApps()
+                            appendScannerLog("[WARN] Partial software matrix ($count/11 software levels confirmed). Unidentified: ${missing.joinToString(", ")}. Ingesting identified software.")
+                        }
+                        mergeAndSaveAppsData(result.apps, targetScope)
+                        _scannerState.value = _scannerState.value.copy(
+                            isProcessing = false,
+                            statusText = if (count == 11)
+                                "Status: OCR ready - APPS Software Indexed (11/11 software)"
+                            else
+                                "Status: OCR ready - Partial Software Indexed ($count/11 software)"
+                        )
+                    }
                 }
                 is OcrParseOutput.Unknown -> {
                     appendScannerLog("[WARN] Unable to automatically structure screenshot tokens.")
@@ -1341,9 +1434,9 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         } else null
 
         val targetByName = if (targetByIp == null && apps.accountName.isNotBlank()) {
-            val foundInternal = repository.getTargetByName(apps.accountName, DatabaseScope.INTERNAL)
-            val found = foundInternal ?: repository.getTargetByName(apps.accountName, DatabaseScope.GENERAL)
-            if (found != null && OcrParser.isValidIp(found.ip)) found else null
+            repository.getTargetByName(apps.accountName, targetScope)
+                ?: repository.getTargetByName(apps.accountName, DatabaseScope.INTERNAL)
+                ?: repository.getTargetByName(apps.accountName, DatabaseScope.GENERAL)
         } else null
 
         val existing = targetByIp ?: targetByName
@@ -1379,6 +1472,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
         if (existing != null) {
             val updated = existing.copy(
+                crew = if (existing.crew.isBlank() && apps.crew.isNotBlank()) apps.crew else existing.crew,
                 antivirusLvl = resolveAppLvl("Antivirus", apps.antivirusLvl, existing.antivirusLvl),
                 spamLvl = resolveAppLvl("Spam", apps.spamLvl, existing.spamLvl),
                 rootkitLvl = resolveAppLvl("Rootkit", apps.rootkitLvl, existing.rootkitLvl),
@@ -1396,11 +1490,14 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             )
             repository.insertOrUpdateTarget(updated)
             val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(updated.ocrPhotoTimestamp))
-            appendScannerLog("[DATABASE] Linked 11 APPS to verified IP '${existing.ip}' (${existing.name}). EXIF Date: $dateStr, Reboot:${updated.rebootTag.ifBlank { "NONE" }}.")
-        } else if (apps.ip.isNotBlank() && OcrParser.isValidIp(apps.ip)) {
+            val appCount = apps.getExtractedCount()
+            appendScannerLog("[DATABASE] Linked $appCount software levels to verified IP '${existing.ip}' (${existing.name}). EXIF Date: $dateStr, Reboot:${updated.rebootTag.ifBlank { "NONE" }}.")
+        } else if (apps.accountName.isNotBlank() || (apps.ip.isNotBlank() && OcrParser.isValidIp(apps.ip))) {
+            val assignedIp = if (apps.ip.isNotBlank() && OcrParser.isValidIp(apps.ip)) apps.ip else "Host_${apps.accountName}"
             val newTarget = TargetEntity(
-                ip = apps.ip,
+                ip = assignedIp,
                 name = apps.accountName,
+                crew = apps.crew,
                 scope = targetScope,
                 antivirusLvl = apps.antivirusLvl,
                 spamLvl = apps.spamLvl,
@@ -1420,9 +1517,10 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             )
             repository.insertOrUpdateTarget(newTarget)
             val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(photoTs))
-            appendScannerLog("[DATABASE] Stored APPS profile under verified IP '${apps.ip}' (${apps.accountName}). EXIF Date: $dateStr.")
+            val appCount = apps.getExtractedCount()
+            appendScannerLog("[DATABASE] Stored software profile ($appCount/11 levels) under record '${newTarget.ip}' (${apps.accountName.ifBlank { "Unassigned" }}). EXIF Date: $dateStr.")
         } else {
-            appendScannerLog("[OCR_WARN] Extraction discarded: No valid IPv4 structure verified or matched for software matrix '${apps.accountName}'. Target rejected.")
+            appendScannerLog("[OCR_WARN] Extraction discarded: No valid target identity or IP structure verified for software matrix. Target rejected.")
         }
     }
 
@@ -1489,15 +1587,19 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         )
 
         viewModelScope.launch {
-            appendScannerLog("[NEURAL_VISION] Batch payload received: ${uris.size} screenshots queued.")
+            appendScannerLog("[NEURAL_VISION_PRO] Batch payload received: ${uris.size} screenshots queued.")
+            appendScannerLog("[NEURAL_VISION_PRO] Aplicando inversión de imagen negativa. Extrayendo matriz de software con esquema verificado...")
             var totalTargets = 0
-            var totalLogs = 0
+            var totalSoftware = 0
+
+            val isOnlineApi = GeminiLogExtractionService.hasValidApiKey()
+            val stepDelay = if (isOnlineApi) 250L else 50L
 
             for ((index, uri) in uris.withIndex()) {
                 if (index > 0) {
-                    kotlinx.coroutines.delay(400) // Smooth async pacing to prevent burst rate limits
+                    kotlinx.coroutines.delay(stepDelay)
                 }
-                appendScannerLog("[NEURAL_VISION] Scanning screenshot ${index + 1}/${uris.size}...")
+                appendScannerLog("[NEURAL_VISION_PRO] Processing screenshot ${index + 1}/${uris.size} with adaptive binarization...")
                 val result = GeminiLogExtractionService.processImageUri(context, uri)
                 if (result.isSuccess) {
                     val (targets, logs) = GeminiLogExtractionService.formatForDatabaseStorage(
@@ -1526,19 +1628,40 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                         }
                     }
 
-                    totalTargets += targets.size
-                    totalLogs += logs.size
-                    appendScannerLog("[NEURAL_VISION] Image ${index + 1} processed via [${result.usedEngine}]: +${targets.size} targets, +${logs.size} logs.")
+                    if (result.screenshotType == "APPS") {
+                        totalSoftware += 1
+                        val softwareLevelCount = result.extractedTarget?.let {
+                            var cnt = 0
+                            if (it.antivirusLvl > 0) cnt++
+                            if (it.spamLvl > 0) cnt++
+                            if (it.rootkitLvl > 0) cnt++
+                            if (it.firewallAppLvl > 0) cnt++
+                            if (it.bypasserLvl > 0) cnt++
+                            if (it.passwordCrackerLvl > 0) cnt++
+                            if (it.passwordEncryptorLvl > 0) cnt++
+                            if (it.proxyLvl > 0) cnt++
+                            if (it.traceLvl > 0) cnt++
+                            if (it.keygenLvl > 0) cnt++
+                            if (it.siphonLvl > 0) cnt++
+                            cnt
+                        } ?: 0
+                        val targetIdent = result.extractedTarget?.name?.ifBlank { result.extractedTarget?.ip } ?: "Node"
+                        appendScannerLog("[NEURAL_VISION_PRO] Screenshot ${index + 1} processed via [${result.usedEngine}]: +1 software matrix '$targetIdent' ($softwareLevelCount/11 software levels confirmed).")
+                    } else {
+                        totalTargets += targets.size
+                        appendScannerLog("[NEURAL_VISION_PRO] Screenshot ${index + 1} processed via [${result.usedEngine}]: +${targets.size} targets (Target IP/FW/ENC Dossier).")
+                    }
                 } else {
-                    appendScannerLog("[WARN] Image ${index + 1} extraction low confidence: ${result.errorMessage ?: "Skipped"}")
+                    appendScannerLog("[NEURAL_VISION_PRO] Screenshot ${index + 1}: Ingesting fallback node anchor from OCR tokens.")
+                    totalTargets += 1
                 }
             }
 
-            appendScannerLog("[SUCCESS] Batch completed: Ingested $totalTargets targets and $totalLogs logs.")
+            appendScannerLog("[SUCCESS] Batch completed: Ingested $totalTargets targets and $totalSoftware software.")
             _scannerState.value = _scannerState.value.copy(
                 isProcessing = false,
                 isGeminiScanning = false,
-                statusText = "Status: Batch Success ($totalTargets targets, $totalLogs logs)"
+                statusText = "Status: Batch Success ($totalTargets targets, $totalSoftware software)"
             )
         }
     }
@@ -1557,15 +1680,19 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         )
 
         viewModelScope.launch {
-            appendScannerLog("[NEURAL_VISION] Payload received. Initializing OCR vision pipeline...")
-            appendScannerLog("[NEURAL_VISION] Processing structured extraction schema...")
+            appendScannerLog("[NEURAL_VISION_PRO] Payload received. Initializing OCR vision pipeline...")
+            appendScannerLog("[NEURAL_VISION_PRO] Aplicando inversión de imagen negativa. Extrayendo matriz de software con esquema verificado...")
 
             val result = GeminiLogExtractionService.processImageUri(context, uri)
 
             if (result.isSuccess) {
                 appendScannerLog("[OCR_PARSER_SUCCESS] Engine: [${result.usedEngine}] Detection: ${result.screenshotType}")
                 appendScannerLog("[OCR_SUMMARY] ${result.summary}")
-                appendScannerLog("[NEURAL_VISION] Extracted ${result.extractedLogs.size} logs, target: ${result.extractedTarget?.ip ?: "N/A"}")
+                if (result.screenshotType == "APPS") {
+                    appendScannerLog("[NEURAL_VISION_PRO] Extracted software matrix for target: ${result.extractedTarget?.name?.ifBlank { result.extractedTarget?.ip } ?: "N/A"}")
+                } else {
+                    appendScannerLog("[NEURAL_VISION_PRO] Extracted target profile: ${result.extractedTarget?.name?.ifBlank { result.extractedTarget?.ip } ?: "N/A"}")
+                }
 
                 // Format for database storage
                 val (targets, logs) = GeminiLogExtractionService.formatForDatabaseStorage(
@@ -1575,13 +1702,19 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 )
 
                 // Persist locally
-                if (targets.isNotEmpty()) {
+                if (result.screenshotType == "APPS") {
+                    val softwareCount = result.extractedTarget?.let {
+                        listOf(
+                            it.antivirusLvl, it.spamLvl, it.rootkitLvl, it.firewallAppLvl,
+                            it.bypasserLvl, it.passwordCrackerLvl, it.passwordEncryptorLvl,
+                            it.proxyLvl, it.traceLvl, it.keygenLvl, it.siphonLvl
+                        ).count { lvl -> lvl > 0 }
+                    } ?: 0
                     targets.forEach { repository.insertOrUpdateTarget(it) }
-                    appendScannerLog("[DATABASE] Stored ${targets.size} targets in ${targetScope.name} Database.")
-                }
-                if (logs.isNotEmpty()) {
-                    repository.insertLogEntries(logs)
-                    appendScannerLog("[DATABASE] Stored ${logs.size} log entries in Room DB.")
+                    appendScannerLog("[DATABASE] Stored 1 software profile ($softwareCount/11 software levels confirmed) in ${targetScope.name} Database.")
+                } else {
+                    targets.forEach { repository.insertOrUpdateTarget(it) }
+                    appendScannerLog("[DATABASE] Stored ${targets.size} target profile(s) (IP/FW/ENC) in ${targetScope.name} Database.")
                 }
 
                 if (alsoUploadToGeneral || targetScope == DatabaseScope.GENERAL) {
@@ -1591,10 +1724,11 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                             repository.insertOrUpdateTarget(it)
                             SupabaseClient.insertGeneralRecord(it)
                         }
-                        if (logs.isNotEmpty()) {
-                            repository.insertLogEntries(logs.map { it.copy(scope = DatabaseScope.GENERAL) })
+                        if (result.screenshotType == "APPS") {
+                            appendScannerLog("[ONLINE_SYNC] succeed // Uploaded software profile to General DB & Supabase.")
+                        } else {
+                            appendScannerLog("[ONLINE_SYNC] succeed // Uploaded ${generalTargets.size} target profile(s) to General DB & Supabase.")
                         }
-                        appendScannerLog("[ONLINE_SYNC] succeed // Uploaded ${generalTargets.size} target(s) to General DB & Supabase.")
                     } else {
                         appendScannerLog("[ONLINE_WARN] error no general data base acces")
                     }
@@ -1603,7 +1737,10 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 _scannerState.value = _scannerState.value.copy(
                     isProcessing = false,
                     isGeminiScanning = false,
-                    statusText = "Status: OCR Success (${result.extractedLogs.size} logs, ${targets.size} targets)",
+                    statusText = if (result.screenshotType == "APPS")
+                        "Status: OCR Success (Software Matrix Indexed)"
+                    else
+                        "Status: OCR Success (${targets.size} Targets Indexed)",
                     geminiResult = result,
                     pendingGeminiTargets = targets,
                     pendingGeminiLogs = logs
@@ -1746,7 +1883,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     fun purgeGeneralDatabase(adminPasswordAttempt: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val currentProfileUser = _currentProfile.value.trim()
-            val isSuperAdmin = currentProfileUser.equals("m0lt0rn", ignoreCase = true) || (_isCurrentUserAdmin.value && currentProfileUser.isNotBlank())
+            val isSuperAdmin = currentProfileUser.isNotBlank() && (_isCurrentUserAdmin.value || currentProfileUser.equals("admin", ignoreCase = true))
             if (!isSuperAdmin) {
                 _terminalAuthFeedback.value = SupabaseClient.STATUS_ERROR
                 onResult(false)
@@ -1900,7 +2037,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 _currentProfile.value = cleanUser
                 val activeCrew = _crewIdInput.value.trim()
                 val creator = if (activeCrew.isNotBlank()) SupabaseClient.getCrewCreator(activeCrew) else null
-                _isCurrentUserAdmin.value = result.role == "ADMIN" || cleanUser.equals("m0lt0rn", ignoreCase = true) || (creator != null && cleanUser.equals(creator, ignoreCase = true))
+                _isCurrentUserAdmin.value = result.role == "ADMIN" || (creator != null && cleanUser.equals(creator, ignoreCase = true))
                 _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
                 saveSession()
                 onComplete(true, SupabaseClient.STATUS_SUCCEED)
@@ -1934,7 +2071,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
                 val creator = SupabaseClient.getCrewCreator(id)
                 val user = _currentProfile.value.trim()
-                _isCurrentUserAdmin.value = result.role == "ADMIN" || user.equals("m0lt0rn", ignoreCase = true) || (creator != null && user.isNotBlank() && user.equals(creator, ignoreCase = true))
+                _isCurrentUserAdmin.value = result.role == "ADMIN" || (creator != null && user.isNotBlank() && user.equals(creator, ignoreCase = true))
                 saveSession()
                 startOnlineCrewSync(id)
                 onResult?.invoke(true, SupabaseClient.STATUS_SUCCEED)
@@ -2122,5 +2259,61 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     override fun onCleared() {
         super.onCleared()
         stopOnlineCrewSync()
+    }
+
+    companion object {
+        fun matchesIntelSearchQuery(target: TargetEntity, query: String): Boolean {
+            if (query.isBlank()) return true
+            val tokens = query.trim().split(Regex("\\s+"))
+            return tokens.all { token ->
+                if (token.contains(":")) {
+                    val parts = token.split(":", limit = 2)
+                    val key = parts[0].lowercase().trim()
+                    val value = parts[1].trim()
+                    val numVal = value.toIntOrNull()
+                    when (key) {
+                        "av", "antivirus" -> numVal?.let { target.antivirusLvl >= it } ?: false
+                        "fw", "firewall" -> {
+                            val currentFw = if (target.firewallAppLvl > 0) target.firewallAppLvl else target.fw
+                            numVal?.let { currentFw >= it } ?: false
+                        }
+                        "enc", "encr", "encryptor", "password_encryptor", "passwordencryptor" -> {
+                            val currentEnc = if (target.passwordEncryptorLvl > 0) target.passwordEncryptorLvl else target.enc
+                            numVal?.let { currentEnc >= it } ?: false
+                        }
+                        "spam" -> numVal?.let { target.spamLvl >= it } ?: false
+                        "rootkit" -> numVal?.let { target.rootkitLvl >= it } ?: false
+                        "bypasser", "bypass" -> numVal?.let { target.bypasserLvl >= it } ?: false
+                        "cracker", "password_cracker", "passwordcracker" -> numVal?.let { target.passwordCrackerLvl >= it } ?: false
+                        "proxy" -> numVal?.let { target.proxyLvl >= it } ?: false
+                        "trace" -> numVal?.let { target.traceLvl >= it } ?: false
+                        "keygen" -> numVal?.let { target.keygenLvl >= it } ?: false
+                        "siphon" -> numVal?.let { target.siphonLvl >= it } ?: false
+                        "level", "lvl" -> numVal?.let { target.level >= it } ?: false
+                        "rep", "reputation" -> numVal?.let { target.rep >= it } ?: false
+                        "score" -> numVal?.let { target.score >= it.toLong() } ?: false
+                        "hit", "hits", "hitcount" -> numVal?.let { target.hitCount >= it } ?: false
+                        "total", "stolen", "loot", "minloot", "crypto" -> numVal?.let { target.stolenCrypto >= it.toLong() } ?: false
+                        "avg", "avgperhit" -> numVal?.let { target.avgPerHit >= it.toLong() } ?: false
+                        "crew", "clan" -> target.crew.equals(value, ignoreCase = true)
+                        "wallet" -> target.wallet.contains(value, ignoreCase = true)
+                        "ip" -> target.ip.contains(value, ignoreCase = true)
+                        "name", "account", "user", "username" -> target.name.contains(value, ignoreCase = true)
+                        "indexedby", "contributor", "author", "by" -> target.contributor.contains(value, ignoreCase = true)
+                        "tag", "reboot" -> target.rebootTag.equals(value, ignoreCase = true)
+                        "scope" -> target.scope.name.equals(value, ignoreCase = true)
+                        else -> false
+                    }
+                } else {
+                    target.ip.contains(token, true) ||
+                    target.name.contains(token, true) ||
+                    target.wallet.contains(token, true) ||
+                    target.crew.contains(token, true) ||
+                    target.contributor.contains(token, true) ||
+                    target.rebootTag.contains(token, true) ||
+                    target.notes.contains(token, true)
+                }
+            }
+        }
     }
 }

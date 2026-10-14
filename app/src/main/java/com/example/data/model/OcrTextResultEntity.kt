@@ -17,5 +17,6 @@ data class OcrTextResultEntity(
     val detectedEncr: Int? = null,
     val detectedAppsSummary: String? = null,
     val confidenceScore: Float = 0.98f,
+    val scope: DatabaseScope = DatabaseScope.INTERNAL,
     val processedTimestamp: Long = System.currentTimeMillis()
 )

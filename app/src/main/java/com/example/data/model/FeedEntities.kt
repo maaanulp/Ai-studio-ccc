@@ -32,7 +32,7 @@ data class FeedPostEntity(
     val remoteId: String? = null,
     val scope: String = "CREW", // "CREW" or "GLOBAL"
     val crewId: String = "CCC",
-    val author: String = "m0lt0rn",
+    val author: String = "Unassigned",
     val title: String = "",
     val tag: String = "INTEL", // "INTEL", "PLAN", "DISCUSIÓN", "ANUNCIO"
     val content: String = "",
@@ -46,7 +46,7 @@ data class FeedCommentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val postId: Long,
     val remotePostId: String? = null,
-    val author: String = "m0lt0rn",
+    val author: String = "Unassigned",
     val content: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
