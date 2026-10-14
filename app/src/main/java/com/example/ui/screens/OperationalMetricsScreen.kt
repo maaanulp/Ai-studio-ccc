@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.HackerButton
+import com.example.ui.components.TerminalContainer
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.IntelViewModel
 import com.example.ui.viewmodel.MetricsSubTab
@@ -49,18 +50,18 @@ fun OperationalMetricsScreen(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             HackerButton(
-                text = "MY CREW LEADERBOARD",
-                onClick = { viewModel.setMetricsSubTab(MetricsSubTab.MY_CREW) },
-                enabled = subTab == MetricsSubTab.MY_CREW,
+                text = "CREW RANK",
+                onClick = { viewModel.setMetricsSubTab(MetricsSubTab.CREW_RANK) },
+                enabled = subTab == MetricsSubTab.CREW_RANK,
                 modifier = Modifier.weight(1f)
             )
             HackerButton(
-                text = "CREWS RANKINGS",
-                onClick = { viewModel.setMetricsSubTab(MetricsSubTab.CREWS_RANK) },
-                enabled = subTab == MetricsSubTab.CREWS_RANK,
+                text = "GLOBAL RANK",
+                onClick = { viewModel.setMetricsSubTab(MetricsSubTab.GLOBAL_RANK) },
+                enabled = subTab == MetricsSubTab.GLOBAL_RANK,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -68,55 +69,19 @@ fun OperationalMetricsScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         when (subTab) {
-            MetricsSubTab.MY_CREW -> {
-                Text(
-                    text = "CREW OPERATIVES RANKING",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = MatrixTextMuted
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(operativeStats) { op ->
+            MetricsSubTab.CREW_RANK -> {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(operativeStats.filter { it.crewId.equals("CCC", ignoreCase = true) }) { op ->
                         val isMe = currentProfile.isNotBlank() && op.handle.equals(currentProfile, ignoreCase = true)
                         OperativeCard(op = op, isMe = isMe)
                     }
                 }
             }
-
-            MetricsSubTab.CREWS_RANK, MetricsSubTab.GLOBAL_TOP -> {
-                Text(
-                    text = "GLOBAL CLAN LEADERBOARD",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = MatrixTextMuted
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(crewStats) { c ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(MatrixDarkSurface)
-                                .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
-                                .padding(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("#${c.globalRank} [${c.crewId}]", fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MatrixGreenPrimary)
-                                Text("${c.totalPts} PTS", fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MatrixGreenGlow)
-                            }
-                        }
+            MetricsSubTab.GLOBAL_RANK -> {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(operativeStats.sortedByDescending { it.totalPts }) { op ->
+                        val isMe = currentProfile.isNotBlank() && op.handle.equals(currentProfile, ignoreCase = true)
+                        OperativeCard(op = op, isMe = isMe)
                     }
                 }
             }

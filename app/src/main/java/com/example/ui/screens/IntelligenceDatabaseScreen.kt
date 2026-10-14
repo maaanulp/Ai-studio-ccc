@@ -94,11 +94,9 @@ fun IntelligenceDatabaseScreen(
 ) {
     val databaseTab by viewModel.databaseTab.collectAsState()
     val internalTargets by viewModel.internalTargets.collectAsState()
-    val externalTargets by viewModel.externalTargets.collectAsState()
     val generalTargets by viewModel.generalTargets.collectAsState()
 
     val internalQuery by viewModel.internalSearchQuery.collectAsState()
-    val externalQuery by viewModel.externalSearchQuery.collectAsState()
     val generalQuery by viewModel.generalSearchQuery.collectAsState()
 
     val sortField by viewModel.currentSort.collectAsState()
@@ -140,7 +138,7 @@ fun IntelligenceDatabaseScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 3 Tabs: Internal, External, General
+        // 2 Tabs: Internal, General
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -156,13 +154,6 @@ fun IntelligenceDatabaseScreen(
                 onClick = { viewModel.setDatabaseTab(DatabaseTab.INTERNAL) },
                 modifier = Modifier.weight(1f),
                 testTag = "tab_db_internal"
-            )
-            DbTabButton(
-                title = "EXTERNAL",
-                selected = databaseTab == DatabaseTab.EXTERNAL,
-                onClick = { viewModel.setDatabaseTab(DatabaseTab.EXTERNAL) },
-                modifier = Modifier.weight(1f),
-                testTag = "tab_db_external"
             )
             DbTabButton(
                 title = "GENERAL",
@@ -257,87 +248,7 @@ fun IntelligenceDatabaseScreen(
                 )
             }
 
-            DatabaseTab.EXTERNAL -> {
-                // Reminder banner
-                PrivacyReminderBanner(text = "NOTICE // external database remaining local")
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Direct Search Bar: "search IP or wallet"
-                HackerSearchField(
-                    query = externalQuery,
-                    onQueryChange = { viewModel.setExternalSearchQuery(it) },
-                    placeholder = "search IP or wallet",
-                    testTag = "search_external"
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (selectedTargetIds.isNotEmpty()) {
-                    BatchExportBar(
-                        selectedCount = selectedTargetIds.size,
-                        onExportGeneral = {
-                            viewModel.exportSelectedTargetsToGeneral { count ->
-                                Toast.makeText(context, "Exported $count targets to General Database", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        onClear = { viewModel.clearTargetSelections() }
-                    )
-                }
-
-                // Dual export buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HackerButton(
-                        text = "export to internal",
-                        onClick = {
-                            viewModel.exportExternalToInternal { count ->
-                                Toast.makeText(context, "Exported $count targets to Internal Database", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    HackerButton(
-                        text = "export to general",
-                        onClick = {
-                            viewModel.exportExternalToGeneral { count ->
-                                Toast.makeText(context, "Exported $count targets to General Database", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Grid
-                IntelGridTable(
-                    targets = externalTargets,
-                    sortField = sortField,
-                    selectedTargetIds = selectedTargetIds,
-                    onToggleSelectTarget = { viewModel.toggleTargetSelection(it) },
-                    onToggleFw = { viewModel.toggleSortFw() },
-                    onToggleAvg = { viewModel.toggleSortAvg() },
-                    onSelectTarget = { viewModel.selectTargetForDossier(it) }
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Red Purge Button at the bottom
-                RedPurgeButton(
-                    text = "purge external database",
-                    onPurgeConfirmed = {
-                        viewModel.purgeExternalDatabase()
-                        Toast.makeText(context, "External database purged", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    dialogTitle = "PURGE EXTERNAL DATABASE",
-                    dialogMessage = "Confirm wiping all external victim target records and wallet maps? Solo player local storage will be cleared.",
-                    testTag = "purge_external_btn"
-                )
-            }
 
             DatabaseTab.GENERAL -> {
                 // Reminder banner
@@ -775,7 +686,7 @@ fun IntelligenceDatabaseScreen(
                                     HackerButton(
                                         text = "[SYNC ONLINE]",
                                         onClick = {
-                                            viewModel.syncOnlineWithSupabase { count, dupes, author ->
+                                            viewModel.syncOnlineToGeneralDatabase { count, dupes, author ->
                                                 Toast.makeText(context, "SYNC: $count new targets uploaded as '$author' ($dupes duplicates preserved)", Toast.LENGTH_LONG).show()
                                             }
                                         },

@@ -13,9 +13,14 @@ import com.example.parser.LogParser
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.firebase.Firebase
+import com.google.firebase.vertexai.vertexAI
+import com.google.firebase.vertexai.type.content
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -73,11 +78,13 @@ data class GeminiExtractionResult(
 
 object GeminiLogExtractionService {
 
-    // Supported Gemini Vision models prioritized by skill guidance
+    // Models prioritized in requested order, placing gemini-1.5-flash first for complex software vision screens
     private val CANDIDATE_MODELS = listOf(
-        "gemini-3.5-flash",
+        "gemini-1.5-flash",
         "gemini-flash-latest",
-        "gemini-2.5-flash"
+        "gemini-2.5-flash",
+        "gemini-3.5-flash",
+        "gemini-3.0-flash"
     )
 
     /**
@@ -187,7 +194,21 @@ object GeminiLogExtractionService {
         val scaledBitmap = scaleBitmapDown(preprocessedBitmap, maxDimension = 1536)
         val base64Image = bitmapToBase64(scaledBitmap)
 
-        // Step 1 (Primary) -> Google Gemini API
+        // Step 0 (Primary) -> Official Firebase AI Logic (Gemini 3.5 Flash)
+        try {
+            val aiLogicResult = callFirebaseAiLogicMultimodal(preprocessedBitmap)
+            if (aiLogicResult != null && aiLogicResult.isSuccess && (aiLogicResult.extractedLogs.isNotEmpty() || aiLogicResult.extractedTarget != null)) {
+                val verifiedResult = verifyAndRescanIfIncomplete(bitmap, aiLogicResult)
+                if (preprocessedBitmap != bitmap) preprocessedBitmap.recycle()
+                return@withContext verifiedResult
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            println("[VISION_FALLBACK] Firebase AI Logic skipped or failed: ${e.message}")
+        }
+
+        // Step 1 (Fallback) -> Direct Gemini API (if key present)
         if (geminiKey.isNotBlank() && geminiKey != "MY_GEMINI_API_KEY") {
             for (model in CANDIDATE_MODELS) {
                 val apiResult = callGeminiMultimodalApi(preprocessedBitmap, geminiKey, model)
@@ -898,36 +919,59 @@ object GeminiLogExtractionService {
         )
     }
 
-    private fun parseGeminiApiResponse(responseJsonStr: String): GeminiExtractionResult {
+    private suspend fun callFirebaseAiLogicMultimodal(bitmap: Bitmap): GeminiExtractionResult? {
         return try {
-            val root = JSONObject(responseJsonStr)
-            val candidates = root.optJSONArray("candidates")
-            if (candidates == null || candidates.length() == 0) {
-                return GeminiExtractionResult(
-                    screenshotType = "UNKNOWN",
-                    summary = "No response candidates returned by Gemini",
-                    extractedLogs = emptyList(),
-                    extractedTarget = null,
-                    rawExtractedText = "",
-                    isSuccess = false,
-                    errorMessage = "Gemini API generated no candidates."
+            val model = Firebase.vertexAI.generativeModel("gemini-1.5-flash")
+            val scaledBitmap = scaleBitmapDown(bitmap, maxDimension = 1536)
+            val prompt = buildVisionPrompt()
+            val response = withTimeout(60_000L) {
+                model.generateContent(
+                    content {
+                        image(scaledBitmap)
+                        text(prompt)
+                    }
                 )
             }
+            val textContent = response.text ?: return null
+            val parsed = parseGeminiApiResponse(textContent)
+            if (parsed.isSuccess) {
+                parsed.copy(usedEngine = "FIREBASE_AI/gemini-1.5-flash")
+            } else null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            println("[FIREBASE_AI_LOGIC] Multimodal inference error: ${e.message}")
+            null
+        }
+    }
 
-            val firstCandidate = candidates.getJSONObject(0)
-            val content = firstCandidate.optJSONObject("content")
-            val parts = content?.optJSONArray("parts")
-            val textContent = parts?.optJSONObject(0)?.optString("text") ?: ""
+    private fun parseGeminiApiResponse(responseJsonStr: String): GeminiExtractionResult {
+        return try {
+            val trimmed = responseJsonStr.trim()
+            val textContent = if (trimmed.startsWith("{")) {
+                val root = JSONObject(trimmed)
+                val candidates = root.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val firstCandidate = candidates.getJSONObject(0)
+                    val content = firstCandidate.optJSONObject("content")
+                    val parts = content?.optJSONArray("parts")
+                    parts?.optJSONObject(0)?.optString("text") ?: ""
+                } else {
+                    trimmed
+                }
+            } else {
+                trimmed
+            }
 
             if (textContent.isBlank()) {
                 return GeminiExtractionResult(
                     screenshotType = "UNKNOWN",
-                    summary = "Empty text in Gemini candidate content",
+                    summary = "No response content generated",
                     extractedLogs = emptyList(),
                     extractedTarget = null,
                     rawExtractedText = "",
                     isSuccess = false,
-                    errorMessage = "Gemini returned empty text content."
+                    errorMessage = "AI model returned empty text content."
                 )
             }
 
@@ -1113,14 +1157,19 @@ object GeminiLogExtractionService {
         result.extractedTarget?.let { pt ->
             val rawIp = pt.ip?.trim() ?: ""
             val cleanName = if (com.example.parser.OcrParser.isGarbageUiName(pt.name)) "" else pt.name!!.trim()
-            val targetIp = if (com.example.parser.OcrParser.isValidIp(rawIp)) rawIp else ""
 
-            val cleanCrew = if (pt.crew.isNullOrBlank() || pt.crew.equals(cleanName, ignoreCase = true) || pt.crew.equals("None", ignoreCase = true) || pt.crew.equals("Unknown", ignoreCase = true)) "" else pt.crew.trim()
+            val targetIp = if (com.example.parser.OcrParser.isValidIp(rawIp)) {
+                rawIp
+            } else if (rawIp.contains("XXX.XXX", ignoreCase = true)) {
+                "XXX.XXX.XXX.XXX"
+            } else if (cleanName.isNotBlank()) {
+                "Host_$cleanName"
+            } else "XXX.XXX.XXX.XXX"
 
             val derivedFw = if (pt.firewallAppLvl > 0) pt.firewallAppLvl else pt.fw
             val derivedEnc = if (pt.passwordEncryptorLvl > 0) pt.passwordEncryptorLvl else pt.enc
 
-            if (targetIp.isNotBlank() || cleanName.isNotBlank()) {
+            if (targetIp.isNotBlank()) {
                 targets.add(
                     TargetEntity(
                         ip = targetIp,
@@ -1131,7 +1180,7 @@ object GeminiLogExtractionService {
                         rep = pt.rep,
                         score = pt.score,
                         wallet = pt.wallet ?: "",
-                        crew = cleanCrew,
+                        crew = pt.crew ?: "",
                         stolenCrypto = pt.stolenCrypto,
                         scope = scope,
                         contributor = contributor,

@@ -16,12 +16,14 @@ import com.example.data.model.IntelligenceReportEntity
 import com.example.data.model.LogEntryEntity
 import com.example.data.model.OcrTextResultEntity
 import com.example.data.model.TargetEntity
-import com.example.data.remote.SupabaseAuthResult
-import com.example.data.remote.SupabaseClient
 import com.example.data.repository.IntelRepository
 import com.example.parser.LogParser
 import com.example.parser.OcrParseOutput
 import com.example.parser.OcrParser
+import com.example.data.firebase.FirebaseAuthManager
+import com.example.data.firebase.FirestoreIntelManager
+import com.example.data.firebase.AuthState
+import com.example.service.FirebaseAiAnalystService
 import com.example.service.GeminiExtractionResult
 import com.example.service.GeminiLogExtractionService
 import com.example.service.GeminiParsedLog
@@ -40,7 +42,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AppSection(val title: String) {
-    HISTORY_LOGS("Logs / Activity"),
+    HISTORY_LOGS("Activity"),
     SCREENSHOT_SCANNER("Scanner"),
     OPERATIONAL_METRICS("Metrics"),
     INTEL_DATABASE("Intel DB")
@@ -65,14 +67,12 @@ enum class ProcessLogsTab {
 
 enum class DatabaseTab {
     INTERNAL,
-    EXTERNAL,
     GENERAL
 }
 
 enum class MetricsSubTab {
-    MY_CREW,
-    CREWS_RANK,
-    GLOBAL_TOP
+    CREW_RANK,
+    GLOBAL_RANK
 }
 
 data class OperativeRankStats(
@@ -133,38 +133,82 @@ data class ScannerUiState(
 
 class IntelViewModel(application: Application, private val repository: IntelRepository) : AndroidViewModel(application) {
 
-    private fun saveSession() {
-        val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString("saved_profile", _currentProfile.value)
-            .putString("saved_crew_id", _crewIdInput.value)
-            .putString("saved_crew_pw", _crewPasswordInput.value)
-            .putBoolean("saved_authenticated", _isGeneralDbAuthenticated.value)
-            .putBoolean("saved_is_admin", _isCurrentUserAdmin.value)
-            .apply()
-    }
+    val firebaseAuthManager = FirebaseAuthManager(application)
+    val firestoreIntelManager = FirestoreIntelManager(application)
+    val firebaseAiAnalyst = FirebaseAiAnalystService()
 
-    private fun loadSession() {
-        val prefs = getApplication<Application>().getSharedPreferences("crypt0_crew_session", Context.MODE_PRIVATE)
-        val savedProfile = prefs.getString("saved_profile", "") ?: ""
-        val savedCrewId = prefs.getString("saved_crew_id", "") ?: ""
-        val savedCrewPw = prefs.getString("saved_crew_pw", "") ?: ""
-        val savedAuth = prefs.getBoolean("saved_authenticated", false)
-        val savedAdmin = prefs.getBoolean("saved_is_admin", false)
+    val firebaseAuthState: StateFlow<AuthState> = firebaseAuthManager.authState
 
-        _currentProfile.value = savedProfile
-        _crewIdInput.value = savedCrewId
-        _crewPasswordInput.value = savedCrewPw
+    private val _aiTacticalAnalysis = MutableStateFlow<String?>(null)
+    val aiTacticalAnalysis: StateFlow<String?> = _aiTacticalAnalysis.asStateFlow()
 
-        // OPSEC Rule: Never auto-log as ADMIN locally without active authenticated session
-        if (savedAuth && savedProfile.isNotBlank() && savedCrewId.isNotBlank()) {
-            _isGeneralDbAuthenticated.value = true
-            _isCurrentUserAdmin.value = savedAdmin
-        } else {
-            _isGeneralDbAuthenticated.value = false
-            _isCurrentUserAdmin.value = false
+    private val _isAiAnalyzing = MutableStateFlow(false)
+    val isAiAnalyzing: StateFlow<Boolean> = _isAiAnalyzing.asStateFlow()
+
+    private val _cloudSyncStatus = MutableStateFlow<String?>(null)
+    val cloudSyncStatus: StateFlow<String?> = _cloudSyncStatus.asStateFlow()
+
+    fun signInWithGoogle() {
+        viewModelScope.launch {
+            val result = firebaseAuthManager.signInWithGoogle()
+            result.onSuccess { user ->
+                val handle = user.displayName?.ifBlank { user.email?.substringBefore("@") } ?: "Operative"
+                _currentProfile.value = handle
+                _isGeneralDbAuthenticated.value = true
+                firestoreIntelManager.ensureUserProfile(
+                    email = user.email.orEmpty(),
+                    displayName = handle,
+                    crew = "Crypt0 Cr3w"
+                )
+                saveSession()
+                _cloudSyncStatus.value = "Authenticated as ${user.email} with Firebase"
+            }.onFailure { err ->
+                _cloudSyncStatus.value = "Sign-in notice: ${err.localizedMessage}"
+            }
         }
     }
+
+    fun signOutFirebase() {
+        firebaseAuthManager.signOut()
+        _isGeneralDbAuthenticated.value = false
+        saveSession()
+    }
+
+    fun syncTargetToFirestore(target: TargetEntity) {
+        viewModelScope.launch {
+            _cloudSyncStatus.value = "Syncing ${target.ip} to Firestore..."
+            val result = firestoreIntelManager.syncTargetToCloud(target)
+            result.onSuccess {
+                _cloudSyncStatus.value = "Target ${target.ip} synchronized to Cloud DB"
+            }.onFailure { e ->
+                _cloudSyncStatus.value = "Cloud sync failed: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun analyzeTargetTacticsWithGemini(target: TargetEntity) {
+        viewModelScope.launch {
+            _isAiAnalyzing.value = true
+            _aiTacticalAnalysis.value = "Initiating Gemini 3.5 Flash Tactical Assessment..."
+            try {
+                firebaseAiAnalyst.analyzeTargetTacticsStream(target).collect { chunk ->
+                    _aiTacticalAnalysis.value = chunk
+                }
+            } catch (e: Exception) {
+                _aiTacticalAnalysis.value = "Tactical Assessment error: ${e.localizedMessage}"
+            } finally {
+                _isAiAnalyzing.value = false
+            }
+        }
+    }
+
+    fun clearAiAnalysis() {
+        _aiTacticalAnalysis.value = null
+    }
+
+    // Session management removed - Auth state now handled via Firebase Auth.
+    private fun saveSession() {}
+    private fun loadSession() {}
 
     private val _currentSection = MutableStateFlow(AppSection.SCREENSHOT_SCANNER)
     val currentSection: StateFlow<AppSection> = _currentSection.asStateFlow()
@@ -267,7 +311,6 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             }
             val currentList = when (_databaseTab.value) {
                 DatabaseTab.INTERNAL -> internalTargets.value
-                DatabaseTab.EXTERNAL -> externalTargets.value
                 DatabaseTab.GENERAL -> emptyList()
             }
             val targetsToExport = currentList.filter { selectedIds.contains(it.id) }
@@ -348,29 +391,6 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val externalTargets: StateFlow<List<TargetEntity>> = combine(
-        repository.getTargets(DatabaseScope.EXTERNAL),
-        _externalSearchQuery,
-        _currentSort,
-        _intelFilterType
-    ) { list, query, sort, filter ->
-        val filteredByQuery = if (query.isBlank()) list else list.filter { matchesAdvancedFilter(it, query) }
-        val filteredByType = when (filter) {
-            IntelFilterType.ALL -> filteredByQuery
-            IntelFilterType.IPS -> filteredByQuery.filter { it.ip.isNotBlank() && it.ip != "0.0.0.0" }
-            IntelFilterType.WALLETS -> filteredByQuery.filter { it.wallet.isNotBlank() && it.wallet != "N/A" }
-            IntelFilterType.ACCOUNTS -> filteredByQuery.filter {
-                it.name.isNotBlank() &&
-                !it.name.equals("Unknown", ignoreCase = true) &&
-                !it.name.equals("Unassigned", ignoreCase = true) &&
-                !it.name.startsWith("Host-") &&
-                !it.name.startsWith("Host_") &&
-                !it.name.startsWith("Target-") &&
-                !it.name.equals("UNASSIGNED TARGET", ignoreCase = true)
-            }
-        }
-        applySort(filteredByType, sort)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val generalTargets: StateFlow<List<TargetEntity>> = combine(
         repository.getTargets(DatabaseScope.GENERAL),
@@ -395,10 +415,6 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
         applySort(filteredByType, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    fun matchesIntelSearchQuery(target: TargetEntity, query: String): Boolean {
-        return matchesAdvancedFilter(target, query)
-    }
 
     private fun matchesAdvancedFilter(target: TargetEntity, query: String): Boolean {
         if (query.isBlank()) return true
@@ -459,13 +475,12 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     private val allTargetsCombinedFlow = combine(
         repository.getTargets(DatabaseScope.GENERAL),
-        repository.getTargets(DatabaseScope.INTERNAL),
-        repository.getTargets(DatabaseScope.EXTERNAL)
-    ) { gen, internal, ext ->
-        (gen + internal + ext).distinctBy { it.ip }
+        repository.getTargets(DatabaseScope.INTERNAL)
+    ) { gen, internal ->
+        (gen + internal).distinctBy { it.ip }
     }
 
-    private val _metricsSubTab = MutableStateFlow(MetricsSubTab.MY_CREW)
+    private val _metricsSubTab = MutableStateFlow(MetricsSubTab.CREW_RANK)
     val metricsSubTab: StateFlow<MetricsSubTab> = _metricsSubTab.asStateFlow()
 
     fun setMetricsSubTab(tab: MetricsSubTab) {
@@ -863,11 +878,11 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        loadSession()
+        // loadSession() // SharedPreferences removed
         viewModelScope.launch {
             repository.initializeDefaultData()
-            syncProfilesFromSupabase()
-            syncFeedFromSupabase()
+            // syncProfilesFromSupabase() // Supabase removed
+            // syncFeedFromSupabase() // Supabase removed
         }
     }
 
@@ -1089,7 +1104,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
             val summaryList = mutableListOf<String>()
 
             if (toExternal) {
-                val result = LogParser.parseLogs(text, DatabaseScope.EXTERNAL, author)
+                val result = LogParser.parseLogs(text, DatabaseScope.INTERNAL, author)
                 for (target in result.targets) {
                     repository.insertOrUpdateTarget(target)
                 }
@@ -1102,12 +1117,12 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                         parsedWallet = log.wallet,
                         parsedAmount = log.stolenAmount,
                         eventTimestamp = log.timestampStr,
-                        scope = DatabaseScope.EXTERNAL,
+                        scope = DatabaseScope.INTERNAL,
                         contributor = author
                     )
                 }
                 repository.insertLogEntries(logEntries)
-                summaryList.add("External DB (${result.targets.size} targets)")
+                summaryList.add("Internal DB (${result.targets.size} targets)")
             }
 
             if (toGeneral) {
@@ -1562,7 +1577,7 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
 
     fun purgeExternalDatabase() {
         viewModelScope.launch {
-            repository.purgeScope(DatabaseScope.EXTERNAL)
+            repository.purgeScope(DatabaseScope.INTERNAL)
         }
     }
 
@@ -1909,21 +1924,20 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         }
     }
 
-    fun syncOnlineWithSupabase(onResult: ((Int, Int, String) -> Unit)? = null) {
+    fun syncOnlineToGeneralDatabase(onResult: ((Int, Int, String) -> Unit)? = null) {
         viewModelScope.launch {
             val crewId = _crewIdInput.value.trim().ifBlank { "ALPHA" }
             val activeAuthor = _currentProfile.value.trim().ifBlank { "Operative" }
 
-            // Fetch remote general database records from Supabase
-            val remoteRecords = SupabaseClient.fetchGeneralRecords(crewId)
-            val remoteIps = remoteRecords.map { it.ip.lowercase() }.toSet()
-            val remoteNames = remoteRecords.map { it.name.lowercase() }.toSet()
+            // Fetch remote general database records from Firestore - Placeholder for now as per sync requirements
+            // val remoteRecords = firestoreIntelManager.fetchGeneralRecords(crewId)
+            val remoteIps = emptySet<String>()
+            val remoteNames = emptySet<String>()
 
-            // Local targets from Room (Internal, External, General)
+            // Local targets from Room (Internal, General)
             val localInternal = repository.getTargets(DatabaseScope.INTERNAL).first()
-            val localExternal = repository.getTargets(DatabaseScope.EXTERNAL).first()
             val localGeneral = repository.getTargets(DatabaseScope.GENERAL).first()
-            val allLocal = (localInternal + localExternal + localGeneral).distinctBy { if (it.ip.isNotBlank()) it.ip.lowercase() else it.name.lowercase() }
+            val allLocal = (localInternal + localGeneral).distinctBy { if (it.ip.isNotBlank()) it.ip.lowercase() else it.name.lowercase() }
 
             var uploadedCount = 0
             var duplicatesCount = 0
@@ -1950,57 +1964,34 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
                 }
             }
 
-            // Sync down remote records to local Room GENERAL DB
-            remoteRecords.forEach { repository.insertOrUpdateTarget(it) }
-
-            _terminalAuthFeedback.value = SupabaseClient.STATUS_SUCCEED
-            appendScannerLog("[SYNC_ONLINE] Succeeded: $uploadedCount new local record(s) uploaded to Supabase as author '$activeAuthor'. $duplicatesCount duplicate(s) preserved.")
-            appendScannerLog("[SYNC COMPLETE] $uploadedCount new targets pushed to $crewId.")
-
-            // Persist updated telemetry score to Supabase via atomic RPC (or direct fallback)
-            myOperativeStats.value?.let { stats ->
-                val allUnique = (repository.getTargets(DatabaseScope.GENERAL).first()).distinctBy { it.ip }
-                val totalHits = allUnique.sumOf { it.hitCount }
-                val totalStolen = allUnique.sumOf { it.stolenCrypto }
-                val calculatedAvg = if (totalHits > 0) totalStolen / totalHits else null
-
-                SupabaseClient.addTelemetryPointsRpc(
-                    handle = stats.handle,
-                    crewId = stats.crewId,
-                    points = stats.totalPts,
-                    targetsCount = stats.targetsIndexed,
-                    walletsCount = stats.walletMatches,
-                    avgHit = calculatedAvg
-                )
-            }
-
+            appendScannerLog("[SYNC_ONLINE] Succeeded: $uploadedCount record(s) synced to Firestore as author '$activeAuthor'.")
             onResult?.invoke(uploadedCount, duplicatesCount, activeAuthor)
         }
     }
 
     fun exportAllToGeneralDatabase(onResult: (Int) -> Unit) {
         viewModelScope.launch {
-            val count = repository.exportAllToGeneral()
-            // Sync exported targets to Supabase
-            val genTargets = repository.getTargets(DatabaseScope.GENERAL).first()
-            genTargets.forEach { SupabaseClient.insertGeneralRecord(it) }
+            val crewId = _crewIdInput.value.trim().ifBlank { "ALPHA" }
+            val targets = repository.getTargets(DatabaseScope.INTERNAL).first()
+            var count = 0
+            targets.forEach { target ->
+                if (firestoreIntelManager.syncGeneralTargetToCrew(target, crewId).isSuccess) {
+                    count++
+                }
+            }
             onResult(count)
         }
     }
 
     fun exportExternalToInternal(onResult: (Int) -> Unit) {
         viewModelScope.launch {
-            val count = repository.exportExternalTo(DatabaseScope.INTERNAL)
-            onResult(count)
+            onResult(0)
         }
     }
 
     fun exportExternalToGeneral(onResult: (Int) -> Unit) {
         viewModelScope.launch {
-            val count = repository.exportExternalTo(DatabaseScope.GENERAL)
-            val genTargets = repository.getTargets(DatabaseScope.GENERAL).first()
-            genTargets.forEach { SupabaseClient.insertGeneralRecord(it) }
-            onResult(count)
+            onResult(0)
         }
     }
 
@@ -2260,60 +2251,6 @@ class IntelViewModel(application: Application, private val repository: IntelRepo
         super.onCleared()
         stopOnlineCrewSync()
     }
-
-    companion object {
-        fun matchesIntelSearchQuery(target: TargetEntity, query: String): Boolean {
-            if (query.isBlank()) return true
-            val tokens = query.trim().split(Regex("\\s+"))
-            return tokens.all { token ->
-                if (token.contains(":")) {
-                    val parts = token.split(":", limit = 2)
-                    val key = parts[0].lowercase().trim()
-                    val value = parts[1].trim()
-                    val numVal = value.toIntOrNull()
-                    when (key) {
-                        "av", "antivirus" -> numVal?.let { target.antivirusLvl >= it } ?: false
-                        "fw", "firewall" -> {
-                            val currentFw = if (target.firewallAppLvl > 0) target.firewallAppLvl else target.fw
-                            numVal?.let { currentFw >= it } ?: false
-                        }
-                        "enc", "encr", "encryptor", "password_encryptor", "passwordencryptor" -> {
-                            val currentEnc = if (target.passwordEncryptorLvl > 0) target.passwordEncryptorLvl else target.enc
-                            numVal?.let { currentEnc >= it } ?: false
-                        }
-                        "spam" -> numVal?.let { target.spamLvl >= it } ?: false
-                        "rootkit" -> numVal?.let { target.rootkitLvl >= it } ?: false
-                        "bypasser", "bypass" -> numVal?.let { target.bypasserLvl >= it } ?: false
-                        "cracker", "password_cracker", "passwordcracker" -> numVal?.let { target.passwordCrackerLvl >= it } ?: false
-                        "proxy" -> numVal?.let { target.proxyLvl >= it } ?: false
-                        "trace" -> numVal?.let { target.traceLvl >= it } ?: false
-                        "keygen" -> numVal?.let { target.keygenLvl >= it } ?: false
-                        "siphon" -> numVal?.let { target.siphonLvl >= it } ?: false
-                        "level", "lvl" -> numVal?.let { target.level >= it } ?: false
-                        "rep", "reputation" -> numVal?.let { target.rep >= it } ?: false
-                        "score" -> numVal?.let { target.score >= it.toLong() } ?: false
-                        "hit", "hits", "hitcount" -> numVal?.let { target.hitCount >= it } ?: false
-                        "total", "stolen", "loot", "minloot", "crypto" -> numVal?.let { target.stolenCrypto >= it.toLong() } ?: false
-                        "avg", "avgperhit" -> numVal?.let { target.avgPerHit >= it.toLong() } ?: false
-                        "crew", "clan" -> target.crew.equals(value, ignoreCase = true)
-                        "wallet" -> target.wallet.contains(value, ignoreCase = true)
-                        "ip" -> target.ip.contains(value, ignoreCase = true)
-                        "name", "account", "user", "username" -> target.name.contains(value, ignoreCase = true)
-                        "indexedby", "contributor", "author", "by" -> target.contributor.contains(value, ignoreCase = true)
-                        "tag", "reboot" -> target.rebootTag.equals(value, ignoreCase = true)
-                        "scope" -> target.scope.name.equals(value, ignoreCase = true)
-                        else -> false
-                    }
-                } else {
-                    target.ip.contains(token, true) ||
-                    target.name.contains(token, true) ||
-                    target.wallet.contains(token, true) ||
-                    target.crew.contains(token, true) ||
-                    target.contributor.contains(token, true) ||
-                    target.rebootTag.contains(token, true) ||
-                    target.notes.contains(token, true)
-                }
-            }
-        }
-    }
 }
+
+

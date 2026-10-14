@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'createdAt'])
+        && data.userId is string
+        && data.email is string
+        && data.createdAt is timestamp
+        && data.createdAt <= request.time;
+    }
+
+    function isValidTarget(data) {
+      return data.keys().hasAll(['targetId', 'userId', 'ip', 'updatedAt'])
+        && data.targetId is string
+        && data.userId is string
+        && data.ip is string
+        && data.updatedAt is timestamp
+        && data.updatedAt <= request.time;
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['reportId', 'userId', 'title', 'createdAt'])
+        && data.reportId is string
+        && data.userId is string
+        && data.title is string
+        && data.createdAt is timestamp
+        && data.createdAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data)
+                    && request.resource.data.userId == resource.data.userId;
+      allow delete: if isOwner(userId);
+
+      match /targets/{targetId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidTarget(request.resource.data)
+                      && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidTarget(request.resource.data)
+                      && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
+      }
+
+      match /intelligence_reports/{reportId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidReport(request.resource.data)
+                      && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidReport(request.resource.data)
+                      && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /crews/{crewId} {
+      allow read: if isAuthenticated() && request.auth.token.crew == crewId;
+      
+      match /general_targets/{targetId} {
+        allow read: if isAuthenticated() && request.auth.token.crew == crewId;
+        allow write: if isAuthenticated() && request.auth.token.crew == crewId;
+      }
+    }
+  }
+}

@@ -42,26 +42,18 @@ fun HistoryLogsScreen(
 
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .clip(RoundedCornerShape(4.dp))
                 .background(MatrixDarkSurface)
                 .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
                 .padding(12.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "[DIRECTIVE] Subnet target sweep active. Correlate software matrices with high-balance wallets.",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = MatrixGreenPrimary
-                )
-                Text(
-                    text = "Broadcasted by: Central Command | Tag: [PLAN]",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    color = MatrixTextMuted
-                )
-            }
+            Text(
+                text = "> SYSTEM FEED READY...\n> WAITING FOR CREW ACTIVITY BROADCASTS...",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                color = MatrixGreenDim
+            )
         }
     }
 }

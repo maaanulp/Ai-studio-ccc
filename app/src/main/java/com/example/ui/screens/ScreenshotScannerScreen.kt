@@ -167,130 +167,54 @@ fun ScreenshotScannerScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         if (scannerTab == ScannerTab.MANUAL_LOGS) {
-            // Manual Logs & Paste buffer UI
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MatrixDarkSurface)
-                    .border(BorderStroke(1.dp, MatrixBorder), RoundedCornerShape(4.dp))
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            // Unified Process Logs Terminal Panel
+            TerminalContainer(
+                title = "STREAM: PROCESS LOGS INGESTION",
+                subtitle = "INTERNAL / GENERAL"
             ) {
-                ScannerSubTabButton(
-                    title = "Input Logs",
-                    selected = processTab == ProcessLogsTab.INPUT_LOGS,
-                    onClick = { viewModel.setProcessTab(ProcessLogsTab.INPUT_LOGS) },
-                    modifier = Modifier.weight(1f)
-                )
-                ScannerSubTabButton(
-                    title = "Output Logs",
-                    selected = processTab == ProcessLogsTab.OUTPUT_LOGS,
-                    onClick = { viewModel.setProcessTab(ProcessLogsTab.OUTPUT_LOGS) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            if (processTab == ProcessLogsTab.INPUT_LOGS) {
-                TerminalContainer(
-                    title = "STREAM: INPUT LOGS (PERSONAL ACCOUNT)",
-                    subtitle = "INTERNAL DB"
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (inputLogsText.isNotBlank()) "${inputLogsText.lines().size} LINES BUFFERED" else "BUFFER EMPTY",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (inputLogsText.isNotBlank()) MatrixGreenGlow else MatrixTextMuted
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (inputLogsText.isNotBlank()) {
-                                    HackerButton(text = "[CLEAR]", onClick = { viewModel.setInputLogsText("") })
-                                }
-                                HackerButton(text = "[PASTE CLIPBOARD]", onClick = { pasteFromClipboard { viewModel.setInputLogsText(it) } })
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (inputLogsText.isNotBlank()) "${inputLogsText.lines().size} LINES BUFFERED" else "BUFFER EMPTY",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (inputLogsText.isNotBlank()) MatrixGreenGlow else MatrixTextMuted
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (inputLogsText.isNotBlank()) {
+                                HackerButton(text = "[CLEAR]", onClick = { viewModel.setInputLogsText("") })
                             }
+                            HackerButton(text = "[PASTE CLIPBOARD]", onClick = { pasteFromClipboard { viewModel.setInputLogsText(it) } })
                         }
-
-                        OutlinedTextField(
-                            value = inputLogsText,
-                            onValueChange = { viewModel.setInputLogsText(it) },
-                            placeholder = { Text("Paste logs here...", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixTextMuted) },
-                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixGreenPrimary),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MatrixDarkBackground,
-                                unfocusedContainerColor = MatrixDarkBackground,
-                                focusedBorderColor = MatrixGreenPrimary,
-                                unfocusedBorderColor = MatrixBorder
-                            ),
-                            modifier = Modifier.fillMaxWidth().height(240.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        HackerButton(
-                            text = "Export Logs to Internal Database",
-                            onClick = { viewModel.exportLogsToInternalDatabase() },
-                            modifier = Modifier.fillMaxWidth()
-                        )
                     }
-                }
-            } else {
-                TerminalContainer(
-                    title = "STREAM: OUTPUT LOGS (VICTIM'S LOG)",
-                    subtitle = "EXTERNAL DB"
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (outputLogsText.isNotBlank()) "${outputLogsText.lines().size} LINES BUFFERED" else "BUFFER EMPTY",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (outputLogsText.isNotBlank()) MatrixGreenGlow else MatrixTextMuted
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (outputLogsText.isNotBlank()) {
-                                    HackerButton(text = "[CLEAR]", onClick = { viewModel.setOutputLogsText("") })
-                                }
-                                HackerButton(text = "[PASTE CLIPBOARD]", onClick = { pasteFromClipboard { viewModel.setOutputLogsText(it) } })
-                            }
-                        }
 
-                        OutlinedTextField(
-                            value = outputLogsText,
-                            onValueChange = { viewModel.setOutputLogsText(it) },
-                            placeholder = { Text("Paste logs here...", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixTextMuted) },
-                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixGreenPrimary),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MatrixDarkBackground,
-                                unfocusedContainerColor = MatrixDarkBackground,
-                                focusedBorderColor = MatrixGreenPrimary,
-                                unfocusedBorderColor = MatrixBorder
-                            ),
-                            modifier = Modifier.fillMaxWidth().height(240.dp)
-                        )
+                    OutlinedTextField(
+                        value = inputLogsText,
+                        onValueChange = { viewModel.setInputLogsText(it) },
+                        placeholder = { Text("Paste raw logs here...", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixTextMuted) },
+                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MatrixGreenPrimary),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MatrixDarkBackground,
+                            unfocusedContainerColor = MatrixDarkBackground,
+                            focusedBorderColor = MatrixGreenPrimary,
+                            unfocusedBorderColor = MatrixBorder
+                        ),
+                        modifier = Modifier.fillMaxWidth().height(240.dp)
+                    )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         HackerButton(
-                            text = "Export Logs to External Database",
-                            onClick = { viewModel.exportLogsToExternalDatabase() },
+                            text = "Export to Internal DB",
+                            onClick = { viewModel.exportLogsToInternalDatabase() },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -395,15 +319,6 @@ fun ScreenshotScannerScreen(
                             .height(48.dp),
                         testTag = "upload_screenshot_btn"
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "> Parse IPs, account names and installed software.",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        color = MatrixTextSecondary
-                    )
                 }
             }
 
@@ -462,14 +377,14 @@ fun ScreenshotScannerScreen(
                                     value = state.manualIp,
                                     onValueChange = { viewModel.updateManualIntelField(ip = it) },
                                     label = "IP (Required)",
-                                    placeholder = "192.168.1.1",
+                                    placeholder = "",
                                     modifier = Modifier.weight(1.2f)
                                 )
                                 CyberInputField(
                                     value = state.manualName,
                                     onValueChange = { viewModel.updateManualIntelField(name = it) },
                                     label = "Name",
-                                    placeholder = "User007",
+                                    placeholder = "",
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -481,28 +396,28 @@ fun ScreenshotScannerScreen(
                                     value = state.manualLvl,
                                     onValueChange = { viewModel.updateManualIntelField(lvl = it) },
                                     label = "Lvl",
-                                    placeholder = "45",
+                                    placeholder = "",
                                     modifier = Modifier.weight(1f)
                                 )
                                 CyberInputField(
                                     value = state.manualRep,
                                     onValueChange = { viewModel.updateManualIntelField(rep = it) },
                                     label = "Rep",
-                                    placeholder = "1200",
+                                    placeholder = "",
                                     modifier = Modifier.weight(1f)
                                 )
                                 CyberInputField(
                                     value = state.manualFw,
                                     onValueChange = { viewModel.updateManualIntelField(fw = it) },
                                     label = "FW",
-                                    placeholder = "50",
+                                    placeholder = "",
                                     modifier = Modifier.weight(1f)
                                 )
                                 CyberInputField(
                                     value = state.manualEncr,
                                     onValueChange = { viewModel.updateManualIntelField(encr = it) },
                                     label = "ENCR",
-                                    placeholder = "65",
+                                    placeholder = "",
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -513,7 +428,7 @@ fun ScreenshotScannerScreen(
                                 value = state.manualWallet,
                                 onValueChange = { viewModel.updateManualIntelField(wallet = it) },
                                 label = "Wallet Address",
-                                placeholder = "hx4cb5...c605",
+                                placeholder = "",
                                 modifier = Modifier.fillMaxWidth()
                             )
 

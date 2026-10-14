@@ -68,33 +68,14 @@ fun HackerAuthModal(
             .border(BorderStroke(1.dp, MatrixBorderBright), RoundedCornerShape(6.dp))
             .testTag("hacker_auth_modal"),
         title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_ccc_launcher_icon),
-                    contentDescription = "Crypt0 Cr3w Central Emblem",
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .border(BorderStroke(1.dp, MatrixGreenPrimary), androidx.compose.foundation.shape.CircleShape)
+            Column {
+                Text(
+                    text = "> OPERATIVE ACCESS & REGISTRATION",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MatrixGreenPrimary
                 )
-                Column {
-                    Text(
-                        text = "> OPERATIVE ACCESS & REGISTRATION",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MatrixGreenPrimary
-                    )
-                    Text(
-                        text = "Crypt0 Cr3w Central [CCC] // Supabase Sync",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        color = MatrixTextMuted
-                    )
-                }
             }
         },
         text = {
@@ -200,6 +181,50 @@ fun HackerAuthModal(
                     )
                 }
 
+                // Firebase Google Sign-In button
+                val authState by viewModel.firebaseAuthState.collectAsState()
+                if (authState is com.example.data.firebase.AuthState.Authenticated) {
+                    val user = (authState as com.example.data.firebase.AuthState.Authenticated).user
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MatrixDarkBackground)
+                            .border(BorderStroke(1.dp, MatrixGreenPrimary), RoundedCornerShape(4.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = "FIREBASE CLOUD: CONNECTED",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MatrixGreenGlow
+                        )
+                        Text(
+                            text = "ID: ${user.email ?: user.uid}",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            color = MatrixGreenPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        HackerButton(
+                            text = "[SIGN OUT FIREBASE]",
+                            onClick = { viewModel.signOutFirebase() },
+                            modifier = Modifier.fillMaxWidth(),
+                            testTag = "firebase_sign_out_btn"
+                        )
+                    }
+                } else {
+                    HackerButton(
+                        text = "▶ SIGN IN WITH GOOGLE",
+                        onClick = {
+                            viewModel.signInWithGoogle()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "google_sign_in_btn"
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -237,7 +262,7 @@ fun HackerAuthModal(
                                 return@HackerButton
                             }
                             viewModel.loginOperativeLocal(handle, pw, rememberSession = rememberSession) { success, msg ->
-                                Toast.makeText(context, "Operative $handle registered and synced with Supabase.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Operative $handle registered.", Toast.LENGTH_SHORT).show()
                                 if (success) onDismiss()
                             }
                         },

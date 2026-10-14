@@ -5,7 +5,6 @@ import androidx.room.PrimaryKey
 
 enum class DatabaseScope {
     INTERNAL,
-    EXTERNAL,
     GENERAL
 }
 

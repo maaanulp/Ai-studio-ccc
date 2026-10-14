@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated crew member profile and operational metadata",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Unique Firebase Auth user identifier" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Hacker codename or handle" },
+        "crew": { "type": "string", "description": "Affiliated cyber crew tag" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account registration timestamp" }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "Target": {
+      "title": "Target",
+      "description": "Scanned target system intel, security levels, and hardware state",
+      "type": "object",
+      "properties": {
+        "targetId": { "type": "string", "description": "Unique identifier for the target system" },
+        "userId": { "type": "string", "description": "User ID of the crew operative who logged the target" },
+        "ip": { "type": "string", "description": "Target IPv4 address" },
+        "name": { "type": "string", "description": "Identified target username or hostname" },
+        "level": { "type": "integer", "description": "Target system tier level" },
+        "fw": { "type": "integer", "description": "Target firewall defense level" },
+        "enc": { "type": "integer", "description": "Target password encryptor level" },
+        "wallet": { "type": "string", "description": "Extracted target crypto wallet address" },
+        "crew": { "type": "string", "description": "Target affiliated crew name" },
+        "stolenCrypto": { "type": "integer", "description": "Cumulative crypto looted from target" },
+        "notes": { "type": "string", "description": "Tactical notes on target vulnerabilities" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of last intel scan" }
+      },
+      "required": ["targetId", "userId", "ip", "updatedAt"]
+    },
+    "IntelligenceReport": {
+      "title": "IntelligenceReport",
+      "description": "Intelligence analysis report generated via Gemini AI vision or terminal",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string", "description": "Unique ID of the intel report" },
+        "userId": { "type": "string", "description": "Authoring user identifier" },
+        "title": { "type": "string", "description": "Brief headline of the reconnaissance finding" },
+        "summary": { "type": "string", "description": "Executive summary from Gemini AI analysis" },
+        "rawText": { "type": "string", "description": "Raw terminal log or OCR text content" },
+        "engine": { "type": "string", "description": "AI model or engine that processed the report" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of report generation" }
+      },
+      "required": ["reportId", "userId", "title", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/users/{userId}/targets/{targetId}": {
+      "schema": "Target",
+      "description": "Target intel collection scoped to authenticated user"
+    },
+    "/users/{userId}/intelligence_reports/{reportId}": {
+      "schema": "IntelligenceReport",
+      "description": "Intelligence reports scoped to authenticated user"
+    }
+  }
+}

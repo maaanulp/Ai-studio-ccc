@@ -22,6 +22,8 @@ import com.example.ui.screens.*
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.IntelViewModel
 
+import com.example.util.configureAppCheck
+
 enum class NavigationScreen(val title: String, val icon: ImageVector) {
     DATABASE("INTEL DB", Icons.Default.Storage),
     PARSER("LOGS", Icons.Default.Terminal),
@@ -33,6 +35,8 @@ enum class NavigationScreen(val title: String, val icon: ImageVector) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Step 1: Configure App Check with launch intent before any UI or Firebase operations
+        configureAppCheck(this, intent)
         enableEdgeToEdge()
 
         val db = AppDatabase.getDatabase(applicationContext)

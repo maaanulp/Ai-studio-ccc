@@ -162,34 +162,27 @@ Siphon LVL 12
     fun isGarbageUiName(name: String?): Boolean {
         if (name.isNullOrBlank()) return true
         val clean = name.trim().uppercase()
-            .replace(Regex("""^[/#\-:_~`'\">]+|[/#\-:_~`'\">]+$"""), "")
             .removePrefix("HOST_")
-            .removePrefix("HOST-")
             .removePrefix(">")
             .trim()
         val garbageSet = setOf(
-            "INSTALLED", "SOFTWARE", "APPS", "PROCESSES", "LOGS", "CREWS", "BACK", "WALLET",
-            "HOST", "TARGET", "SPECS", "OPEN", "CONNECTED", "TRANSFER", "EXTERNAL", "COLD",
-            "HOT", "UNKNOWN", "UNASSIGNED", "GUEST", "NULL", "NONE", "DEVICE", "NETWORK",
-            "PROGRAMS", "APPLICATIONS", "ALL", "MY", "THE", "NTTON", "AN25", "SOFTWARE_MATRIX_NODE",
-            "OPEN TARGET SPECS", "SYSTEM INFO", "XP PROGRESS", "LIFETIME", "WALLPAPERS",
-            "EXTERNAL TRANSFER", "COLD STORAGE", "HOT WALLET", "UPLOAD VIRUS",
-            "INSTALLED SOFTWARE", "INSTALLED PROGRAMS", "INSTALLED APPS"
+            "BACK", "INSTALLED", "NTTON", "AN25", "SOFTWARE_MATRIX_NODE", "OPEN TARGET SPECS",
+            "SPECS", "OPEN", "CONNECTED", "DISCONNECT", "SYSTEM INFO", "XP PROGRESS", "LIFETIME",
+            "DEVICE", "NETWORK", "WALLPAPERS", "PROCESSES", "LOG", "CREWS", "APPS", "WALLET",
+            "TRANSFER", "EXTERNAL TRANSFER", "COLD STORAGE", "HOT WALLET", "UNKNOWN", "UNASSIGNED",
+            "GUEST", "NULL", "NONE", "TARGET", "PROGRAMS", "SOFTWARE", "APPLICATIONS", "HOST_BACK",
+            "HOST_INSTALLED", "HOST_NTTON", "HOST_AN25", "HOST_SPECS", "HOST_SOFTWARE_MATRIX_NODE"
         )
         if (clean in garbageSet) return true
-        val words = clean.split(Regex("""\s+""")).map { it.replace(Regex("""^[/#\-:_~`'\">]+|[/#\-:_~`'\">]+$"""), "").trim() }.filter { it.isNotBlank() }
-        if (words.isNotEmpty() && words.all { it in garbageSet }) return true
-        if (clean.contains("SOFTWARE_MATRIX_NODE") || clean.contains("OPEN TARGET SPECS") || clean.contains("HOST_BACK") || clean.contains("HOST_INSTALLED") || clean.contains("UPLOAD VIRUS")) return true
+        if (clean.contains("SOFTWARE_MATRIX_NODE") || clean.contains("OPEN TARGET SPECS") || clean.contains("HOST_BACK") || clean.contains("HOST_INSTALLED")) return true
         return false
     }
 
-    val IP_FIND_REGEX = Regex("""\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b""")
-    val STRICT_IP_REGEX = Regex("""^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$""")
+    val STRICT_IP_REGEX = Regex("""\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b""")
 
     fun isValidIp(ip: String?): Boolean {
         if (ip.isNullOrBlank()) return false
         val trimmed = ip.trim()
-        if (trimmed.contains("X", ignoreCase = true)) return false
         if (!STRICT_IP_REGEX.matches(trimmed)) return false
         val parts = trimmed.split(".")
         if (parts.size != 4) return false
@@ -286,31 +279,17 @@ Siphon LVL 12
 
         fun sanitizeCandidate(str: String): String {
             var clean = str.replace(Regex("""\[[A-Za-z0-9_#\-]+\]"""), "").trim()
-            clean = clean.replace(Regex("""^[/#\-:_~`'\"]+|[/#\-:_~`'\"]+$"""), "").trim()
+            clean = clean.replace(Regex("""^[#\-:_~`'\"]+|[#\-:_~`'\"]+$"""), "").trim()
             return clean
         }
 
         val ignored = setOf(
-            "ALL", "MY", "THE", "INSTALLED", "SOFTWARE", "TARGET", "RUNNING", "OPEN", "SYSTEM", "PHONE",
-            "DOWNLOAD", "APPS", "APPLICATIONS", "UNKNOWN", "UNASSIGNED", "GUEST",
+            "ALL", "MY", "THE", "INSTALLED", "TARGET", "RUNNING", "OPEN", "SYSTEM", "PHONE",
+            "DOWNLOAD", "APPS", "SOFTWARE", "APPLICATIONS", "UNKNOWN", "UNASSIGNED", "GUEST",
             "NONE", "NULL", "EMPTY", "MATRIX", "NODE", "EXIF", "ROOM", "USER", "ACCOUNT",
             "LEVEL", "LVL", "REP", "REPUTATION", "FIREWALL", "ENCRYPTION", "LOGS", "SCAN",
-            "100%", "WIFI", "LTE", "4G", "5G", "AM", "PM", "ANDROID", "DEVICE", "PROGRAMS",
-            "INSTALLED SOFTWARE", "OPEN TARGET SPECS", "SYSTEM INFO"
+            "100%", "WIFI", "LTE", "4G", "5G", "AM", "PM", "ANDROID", "DEVICE", "PROGRAMS"
         )
-
-        fun isValidCandidate(c: String): Boolean {
-            val s = sanitizeCandidate(c)
-            if (s.length !in 2..30) return false
-            if (s.uppercase() in ignored) return false
-            if (isGarbageUiName(s)) return false
-            if (s.uppercase().split(Regex("""\s+""")).all { it in ignored }) return false
-            val isAppName = CANONICAL_APP_SPECS.any { spec ->
-                spec.primaryPattern.containsMatchIn(s) || spec.aliasPatterns.any { a -> a.containsMatchIn(s) }
-            }
-            if (isAppName) return false
-            return true
-        }
 
         // 0. Prompt symbol "> Username" e.g. > Death.exe, > R34p3rX_, > GhostDrop, > ArdForYa
         val gtSymbolRegex = Regex("""(?i)>\s*([A-Za-z0-9_\.#\-]{2,30})""")
@@ -318,7 +297,7 @@ Siphon LVL 12
             val m = gtSymbolRegex.find(line)
             if (m != null) {
                 val candidate = sanitizeCandidate(m.groupValues[1])
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -330,7 +309,7 @@ Siphon LVL 12
             val m = walletOwnerRegex.find(line)
             if (m != null) {
                 val candidate = sanitizeCandidate(m.groupValues[1])
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -342,7 +321,7 @@ Siphon LVL 12
             val m = installedSoftwareRegex.find(line)
             if (m != null) {
                 val candidate = sanitizeCandidate(m.groupValues[1])
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -354,7 +333,7 @@ Siphon LVL 12
             val m = suffixAppsRegex.find(line)
             if (m != null) {
                 val candidate = sanitizeCandidate(m.groupValues[1])
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -366,7 +345,7 @@ Siphon LVL 12
             val m = prefixAppsRegex.find(line)
             if (m != null) {
                 val candidate = sanitizeCandidate(m.groupValues[1])
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -378,7 +357,7 @@ Siphon LVL 12
             val m = labelRegex.find(line)
             if (m != null) {
                 val candidate = sanitizeCandidate(m.groupValues[1])
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -391,7 +370,7 @@ Siphon LVL 12
             if (m != null) {
                 val c1 = m.groupValues[1].takeIf { it.isNotBlank() } ?: m.groupValues[2]
                 val candidate = sanitizeCandidate(c1)
-                if (isValidCandidate(candidate)) {
+                if (candidate.uppercase() !in ignored && candidate.length in 2..30) {
                     return candidate
                 }
             }
@@ -400,23 +379,18 @@ Siphon LVL 12
         // 5. Line immediately preceding "APPS" or "INSTALLED SOFTWARE"
         for (idx in headerLines.indices) {
             val line = headerLines[idx]
-            val isSoftwareRow = CANONICAL_APP_SPECS.any { spec ->
-                spec.primaryPattern.containsMatchIn(line) || spec.aliasPatterns.any { a -> a.containsMatchIn(line) }
-            }
-            if (isSoftwareRow) continue
-
             if (line.contains("apps", ignoreCase = true) || line.contains("software", ignoreCase = true) || line.contains("installed", ignoreCase = true)) {
                 if (idx > 0) {
                     val prevLine = sanitizeCandidate(headerLines[idx - 1])
                     val words = prevLine.split(Regex("""\s+""")).filter { it.isNotBlank() }
                     val candidate = words.lastOrNull() ?: prevLine
-                    if (isValidCandidate(candidate) && !candidate.matches(Regex("""^\d+$"""))) {
+                    if (candidate.uppercase() !in ignored && candidate.length in 2..30 && !candidate.matches(Regex("""^\d+$"""))) {
                         return candidate
                     }
                 }
                 val words = sanitizeCandidate(line).split(Regex("""\s+""")).filter { it.isNotBlank() }
                 val firstWord = words.firstOrNull() ?: ""
-                if (isValidCandidate(firstWord) && !firstWord.matches(Regex("""^\d+$"""))) {
+                if (firstWord.uppercase() !in ignored && firstWord.length in 2..30 && !firstWord.matches(Regex("""^\d+$"""))) {
                     return firstWord
                 }
             }
@@ -425,7 +399,7 @@ Siphon LVL 12
         // 6. Header line candidate that looks like a username
         for (line in headerLines.take(5)) {
             val clean = sanitizeCandidate(line)
-            if (isValidCandidate(clean) && !clean.matches(Regex("""^\d+$""")) && !clean.contains(".") && !clean.contains(":")) {
+            if (clean.length in 3..24 && clean.uppercase() !in ignored && !clean.matches(Regex("""^\d+$""")) && !clean.contains(".") && !clean.contains(":")) {
                 val isAppName = CANONICAL_APP_SPECS.any { it.primaryPattern.containsMatchIn(clean) || it.aliasPatterns.any { a -> a.containsMatchIn(clean) } }
                 if (!isAppName) {
                     return clean
@@ -456,7 +430,7 @@ Siphon LVL 12
         var roiStartLine = 0
 
         // 1. IP Check
-        val ipMatch = IP_FIND_REGEX.find(rawText)
+        val ipMatch = STRICT_IP_REGEX.find(rawText)
         if (ipMatch != null && isValidIp(ipMatch.value)) {
             detectedIp = ipMatch.value
         }
@@ -572,15 +546,13 @@ Siphon LVL 12
      * Tolerant fuzzy matcher for canonical software titles.
      */
     fun isFuzzyTokenMatch(token: String, target: String, maxDistance: Int = 2): Boolean {
+        if (token.length < 3) return token.equals(target, ignoreCase = true)
         val normToken = normalizeLeetspeak(token).replace(Regex("""[^a-z0-9]"""), "")
         val normTarget = normalizeLeetspeak(target).replace(Regex("""[^a-z0-9]"""), "")
-        if (normToken.length < 3 || normTarget.length < 3) return normToken == normTarget
-        if (normToken == normTarget) return true
-        val lenDiff = kotlin.math.abs(normToken.length - normTarget.length)
-        if (lenDiff > 2) return false
-        val effectiveMaxDist = if (normTarget.length <= 6 || normToken.length <= 6) 1 else maxDistance
+        if (normToken == normTarget || normToken.contains(normTarget) || normTarget.contains(normToken)) return true
         val dist = levenshteinDistance(normToken, normTarget)
-        return dist <= effectiveMaxDist
+        val threshold = if (normTarget.length >= 8) maxOf(maxDistance, 3) else maxDistance
+        return dist <= threshold
     }
 
     data class AppSpec(
@@ -688,7 +660,7 @@ Siphon LVL 12
         if (trimmed.isEmpty()) return null
 
         // 1. Explicit LVL indicators: LVL, LEVEL, 1VL, IVL, IVI, LVI, LV, LY, VER, V, L, # with number
-        val explicitLvlRegex = Regex("""(?i)(?:\[|\(|\b)(?:lvl|level|1vl|ivl|ivi|lvi|lv|ly|ver|v|l|#)\s*[:#\-\.\s]*\s*(\d{1,3})(?:/\d+)?(?:\]|\)|\b)""")
+        val explicitLvlRegex = Regex("""(?i)(?:\[|\(|\b)(?:lvl|level|1vl|ivl|ivi|lvi|lv|ly|ver|v|l|#)\s*[:#\-\.\s]*\s*(\d{1,3})(?!\s*[-+])(?:/\d+)?(?:\]|\)|\b)""")
         val m1 = explicitLvlRegex.find(trimmed)
         if (m1 != null) {
             val v = m1.groupValues[1].toIntOrNull()
@@ -722,19 +694,16 @@ Siphon LVL 12
         return null
     }
 
-    fun extractLevelFromLine(line: String, currentSpec: AppSpec? = null): Int? {
+    fun extractLevelFromLine(line: String): Int? {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return null
 
-        val matchedApps = CANONICAL_APP_SPECS.filter { spec ->
+        // Ensure line does not match another canonical app name
+        val isAnotherApp = CANONICAL_APP_SPECS.any { spec ->
             spec.primaryPattern.containsMatchIn(trimmed) ||
             spec.aliasPatterns.any { it.containsMatchIn(trimmed) }
         }
-        if (currentSpec != null) {
-            if (matchedApps.any { it.name != currentSpec.name }) return null
-        } else {
-            if (matchedApps.size > 1) return null
-        }
+        if (isAnotherApp) return null
 
         val explicitLvlRegex = Regex("""(?i)(?:\[|\(|\b)(?:lvl|level|1vl|ivl|ivi|lvi|lv|ly|v|ver|l|#)?\s*[:#\-\.\s]*(\d{1,3})(?:/\d+)?(?:\]|\)|\b)""")
         val m1 = explicitLvlRegex.find(trimmed)
@@ -905,15 +874,14 @@ Siphon LVL 12
 
         val count = appsResult.getExtractedCount()
         // Flexible fallback if accountName was empty but software was extracted or IP exists
-        val isRealAccountName = accountName.isNotBlank() && !accountName.startsWith("Target_Node_")
-        val hasExplicitAnchor = isRealAccountName || appsIp.isNotBlank()
         val finalAccountName = when {
             accountName.isNotBlank() -> accountName
             appsIp.isNotBlank() -> "Target_$appsIp"
             count > 0 -> "Target_Node_${(rawText.hashCode() and 0xFFFF).toString(16).uppercase()}"
             else -> ""
         }
-        val isValid = (hasExplicitAnchor || count >= 2) && count > 0
+        val hasAnchor = finalAccountName.isNotBlank()
+        val isValid = (hasAnchor || count >= 2) && count > 0
 
         val items = mutableListOf<SoftwareMatrixItem>()
         for (spec in CANONICAL_APP_SPECS) {
@@ -932,7 +900,7 @@ Siphon LVL 12
         return appsResult.copy(
             accountName = finalAccountName,
             isValidMatrix = isValid,
-            hasValidAnchor = hasExplicitAnchor,
+            hasValidAnchor = hasAnchor || count > 0,
             softwareItems = items
         )
     }
@@ -965,11 +933,6 @@ Siphon LVL 12
             logs.add("[OCR_DETECT] Signature matched: APPS / Installed Software Matrix Screenshot")
 
             val apps = parseAppsMatrix(rawText, photoTimestamp)
-
-            if (!apps.hasValidAnchor && apps.ip.isBlank()) {
-                logs.add("[OCR_REJECT] APPS screen rejected: No verified account anchor or IP address detected.")
-                return OcrParseOutput.Unknown(rawText, logs)
-            }
 
             val resolvedAccountName = when {
                 apps.accountName.isNotBlank() && !apps.accountName.equals("Target", ignoreCase = true) -> apps.accountName
@@ -1059,12 +1022,16 @@ Siphon LVL 12
         logs.add("[OCR_DETECT] Signature matched: Account Profile Screenshot")
 
         var ip = ""
-        val ipMatch = IP_FIND_REGEX.find(rawText)
+        val ipMatch = STRICT_IP_REGEX.find(rawText)
         if (ipMatch != null && isValidIp(ipMatch.value)) {
             ip = ipMatch.value
             logs.add("[OCR_EXTRACT] IP Address: $ip")
+        } else if (rawText.contains("XXX.XXX.XXX.XXX", ignoreCase = true) || rawText.contains("XXX.XXX", ignoreCase = true)) {
+            ip = "XXX.XXX.XXX.XXX"
+            logs.add("[OCR_EXTRACT] IP Address (Masked): $ip")
         } else {
-            logs.add("[OCR_WARN] Masked or unassigned IP in profile scan (no valid IPv4 detected).")
+            ip = "XXX.XXX.XXX.XXX"
+            logs.add("[OCR_WARN] Masked or unassigned IP structure in profile scan.")
         }
 
         val name = extractTargetAccountName(rawText)

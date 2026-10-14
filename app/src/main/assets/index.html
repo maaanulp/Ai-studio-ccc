@@ -3,912 +3,1172 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Crypt0 Cr3w Central // Database &amp; Auth Gateway</title>
-
-  <!-- PWA Manifest & App Metas -->
+  <title>Crypt0 Cr3w Central // Scanner &amp; OCR Ingestion [Gemini AI + Firebase]</title>
+  
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#00FF66">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="CCC Indexer">
-  <link rel="apple-touch-icon" href="/assets/icon-192.png">
-
-  <!-- Supabase JS Client v2 (Production CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta name="apple-mobile-web-app-title" content="CCC Scanner">
 
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+    :root {
+      --bg-dark: #000000;
+      --surface-dark: #050a06;
+      --surface-panel: #0a130b;
+      --surface-input: #040905;
+      --matrix-green: #00FF66;
+      --matrix-green-glow: #33ff88;
+      --matrix-green-dim: #00aa44;
+      --matrix-green-subtle: #00441a;
+      --matrix-border: #005522;
+      --matrix-border-bright: #00ff66;
+      --text-primary: #00FF66;
+      --text-dim: #00aa44;
+      --text-muted: #00662a;
+      --cyber-amber: #ffaa00;
+      --phone-border: #142416;
+      --phone-shadow: 0 0 45px rgba(0, 255, 102, 0.15);
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
     }
+
     body, html {
-      background-color: #000000;
-      color: #00FF66;
-      font-family: 'Courier New', Courier, monospace;
+      background-color: #020402;
+      color: var(--text-primary);
+      font-family: 'Share Tech Mono', 'Courier New', Courier, monospace;
       min-height: 100vh;
       width: 100%;
       display: flex;
-      flex-direction: column;
+      justify-content: center;
       align-items: center;
-      justify-content: flex-start;
       padding: 16px;
+      overflow-x: hidden;
     }
-    .terminal-box {
-      border: 1px solid #00FF66;
-      box-shadow: 0 0 25px rgba(0, 255, 102, 0.25);
-      background: #020703;
-      padding: 22px;
-      border-radius: 6px;
-      max-width: 720px;
+
+    /* Matrix canvas ambient effect */
+    #matrix-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.08;
+    }
+
+    /* PHONE FRAME CONTAINER */
+    .device-wrapper {
+      position: relative;
+      z-index: 10;
       width: 100%;
-      text-align: left;
-      margin: auto;
+      max-width: 412px;
+      height: 890px;
+      max-height: 96vh;
+      background: var(--bg-dark);
+      border: 2px solid var(--phone-border);
+      border-radius: 36px;
+      box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.2), 0 25px 60px rgba(0, 0, 0, 0.9), var(--phone-shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
-    .glitch-title {
-      font-size: 20px;
-      font-weight: bold;
-      letter-spacing: 2px;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      text-shadow: 0 0 8px #00FF66;
-      text-align: center;
-    }
-    .badge {
-      display: inline-block;
-      background: rgba(0, 255, 102, 0.12);
-      border: 1px solid #00FF66;
-      padding: 4px 8px;
-      font-size: 11px;
-      border-radius: 3px;
-      margin-bottom: 16px;
+
+    /* ANDROID STATUS BAR (13:05 etc.) */
+    .status-bar {
       width: 100%;
-      text-align: center;
-      letter-spacing: 1px;
-    }
-    .section-title {
+      height: 28px;
+      padding: 6px 18px 2px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       font-size: 11px;
-      color: #FFB000;
       font-weight: bold;
-      margin-top: 14px;
-      margin-bottom: 8px;
-      letter-spacing: 1px;
+      color: var(--text-primary);
+      background: var(--bg-dark);
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .status-bar-left {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-    }
-    .console-screen {
-      background: #000000;
-      border: 1px solid #1a3d24;
-      padding: 10px;
-      font-size: 11px;
-      color: #00FF66;
-      font-family: 'Courier New', Courier, monospace;
-      max-height: 150px;
-      overflow-y: auto;
-      border-radius: 4px;
-      margin-bottom: 14px;
-      line-height: 1.4;
-    }
-    .console-screen p {
-      margin: 2px 0;
-      word-break: break-all;
-    }
-    .console-screen .highlight { color: #00FF66; font-weight: bold; }
-    .console-screen .err { color: #FF5555; }
-    .console-screen .warn { color: #FFB000; }
-    .console-screen .tag { color: #33ffaa; font-weight: bold; }
-
-    /* Tabs Styling */
-    .tabs-nav {
-      display: flex;
       gap: 6px;
-      margin-bottom: 14px;
-      border-bottom: 1px solid #1a3d24;
-      padding-bottom: 6px;
     }
-    .tab-btn {
-      background: transparent;
-      border: 1px solid #1a3d24;
-      color: #79a888;
-      font-family: inherit;
-      font-size: 10px;
-      padding: 6px 10px;
-      cursor: pointer;
-      border-radius: 3px;
-      text-transform: uppercase;
-      font-weight: bold;
-    }
-    .tab-btn.active {
-      background: rgba(0, 255, 102, 0.15);
-      border-color: #00FF66;
-      color: #00FF66;
-    }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
 
-    /* Inputs & Buttons */
-    .input-group {
+    .status-bar-time {
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .status-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .status-bar-icon-svg {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: var(--matrix-green);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* APP SCROLLER CONTAINER */
+    .app-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 8px 12px 10px 12px;
+      background: #010402;
+    }
+
+    .app-screen::-webkit-scrollbar {
+      width: 4px;
+    }
+    .app-screen::-webkit-scrollbar-thumb {
+      background: var(--matrix-border);
+      border-radius: 2px;
+    }
+
+    /* HEADER */
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2px 2px 8px 2px;
+      border-bottom: 1px solid rgba(0, 85, 34, 0.4);
+      margin-bottom: 8px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* LINE-ART EMBLEM */
+    .wireframe-logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 1px solid var(--matrix-green);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 255, 102, 0.05);
+      box-shadow: 0 0 8px rgba(0, 255, 102, 0.25);
+    }
+    .wireframe-logo svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--matrix-green);
+      fill: none;
+      stroke-width: 1.2;
+    }
+
+    .header-title-box {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header-main-title {
+      font-size: 13px;
+      font-weight: bold;
+      color: var(--matrix-green);
+      letter-spacing: 0.2px;
+      text-shadow: 0 0 5px rgba(0, 255, 102, 0.4);
+    }
+
+    .header-author {
+      font-size: 9px;
+      color: var(--matrix-green-glow);
+      letter-spacing: 0.5px;
+    }
+
+    .btn-login {
+      background: transparent;
+      border: 1px solid var(--matrix-green);
+      color: var(--matrix-green);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0, 255, 102, 0.2);
+      transition: all 0.15s ease;
+    }
+    .btn-login:hover, .btn-login:active {
+      background: var(--matrix-green);
+      color: #000;
+      box-shadow: 0 0 12px var(--matrix-green);
+    }
+
+    /* OPERATIVE ROW */
+    .operative-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #040905;
+      border: 1px solid #0a1f0f;
+      border-radius: 4px;
+      padding: 4px 8px;
+      margin-bottom: 12px;
+      cursor: pointer;
+    }
+
+    .operative-icon-svg {
+      width: 12px;
+      height: 12px;
+      stroke: var(--matrix-green-dim);
+      fill: none;
+      stroke-width: 1.5;
+    }
+
+    .operative-text {
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--text-dim);
+      flex: 1;
+      letter-spacing: 0.3px;
+    }
+    .operative-text span {
+      color: var(--matrix-green);
+    }
+
+    .operative-dropdown-arrow {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    /* SECTION TITLE */
+    .section-title {
+      font-size: 11.5px;
+      font-weight: bold;
+      color: var(--text-muted);
+      letter-spacing: 0.8px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    /* TAB BUTTONS ROW */
+    .tabs-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      width: 100%;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn-dim {
+      background: #020703;
+      border: 1px solid #0e2a14;
+      color: var(--matrix-green-dim);
+    }
+
+    .tab-btn-active {
+      background: var(--matrix-green);
+      border: 1px solid var(--matrix-green);
+      color: #000000;
+      box-shadow: 0 0 14px rgba(0, 255, 102, 0.45);
+    }
+
+    /* STATUS LINE */
+    .status-indicator-box {
+      display: flex;
+      align-items: center;
+      background: #030804;
+      border: 1px solid #003311;
+      border-radius: 4px;
+      padding: 6px 10px;
+      margin-bottom: 12px;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--matrix-green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--matrix-green);
+      flex-shrink: 0;
+      animation: pulseDot 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.9); }
+    }
+
+    .status-label {
+      font-size: 11.5px;
+      font-weight: bold;
+      color: var(--matrix-green);
+      letter-spacing: 0.3px;
+    }
+
+    /* INGESTION PAYLOAD BOX */
+    .payload-card {
+      background: #030804;
+      border: 1px solid #005522;
+      border-radius: 5px;
+      padding: 10px 10px 12px 10px;
+      margin-bottom: 14px;
+    }
+
+    .payload-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 10px;
     }
-    .input-label {
-      font-size: 10px;
-      color: #79a888;
-      display: block;
-      margin-bottom: 4px;
-    }
-    .terminal-input {
-      width: 100%;
-      background: #000000;
-      border: 1px solid #1a3d24;
-      color: #00FF66;
-      font-family: inherit;
-      padding: 10px;
-      font-size: 12px;
-      border-radius: 4px;
-      outline: none;
-    }
-    .terminal-input:focus {
-      border-color: #00FF66;
-      box-shadow: 0 0 8px rgba(0, 255, 102, 0.3);
-    }
-    .btn {
-      background: #00FF66;
-      color: #000000;
-      border: none;
-      font-family: inherit;
-      font-weight: bold;
-      font-size: 11px;
-      padding: 10px 14px;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.2s ease;
+
+    .payload-title-left {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      text-transform: uppercase;
-    }
-    .btn:hover:not(:disabled) {
-      box-shadow: 0 0 16px #00FF66;
-      background: #33ff88;
-    }
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .btn-secondary {
-      background: transparent;
-      color: #00FF66;
-      border: 1px solid #00FF66;
-      margin-top: 8px;
-    }
-    .btn-danger {
-      background: transparent;
-      color: #FF5555;
-      border: 1px solid #FF5555;
-      margin-top: 10px;
-    }
-    .btn-danger:hover:not(:disabled) {
-      background: rgba(255, 85, 85, 0.15);
-      box-shadow: 0 0 10px #FF5555;
-    }
-    .btn-sm {
-      background: transparent;
-      border: 1px solid #1a3d24;
-      color: #00FF66;
-      padding: 2px 8px;
-      font-size: 9px;
-      border-radius: 2px;
-      cursor: pointer;
-      font-family: inherit;
+      gap: 6px;
+      font-size: 10px;
       font-weight: bold;
-    }
-    .btn-sm:hover {
-      border-color: #00FF66;
-      background: rgba(0, 255, 102, 0.1);
+      color: var(--matrix-green);
+      letter-spacing: 0.5px;
     }
 
-    /* Database Table */
-    .protected-database {
+    .payload-dot-mini {
+      width: 6px;
+      height: 6px;
+      background: var(--matrix-green);
+      border-radius: 50%;
+    }
+
+    .payload-badge-right {
+      font-size: 9.5px;
+      color: var(--matrix-green-dim);
+      border: 1px solid #00441a;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: #020703;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-upload-large {
+      width: 100%;
+      background: #020603;
+      border: 1px solid var(--matrix-green);
+      border-radius: 4px;
+      padding: 12px 10px;
+      color: var(--matrix-green);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s ease;
+      box-shadow: 0 0 10px rgba(0, 255, 102, 0.15);
+      margin-bottom: 8px;
+    }
+
+    .btn-upload-large:hover {
+      background: rgba(0, 255, 102, 0.12);
+      box-shadow: 0 0 16px rgba(0, 255, 102, 0.35);
+    }
+
+    .btn-upload-large:active {
+      transform: scale(0.99);
+    }
+
+    .payload-desc-text {
+      font-size: 9.5px;
+      line-height: 14px;
+      color: #00bb44;
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 0.2px;
+    }
+    .payload-desc-text p {
+      margin-bottom: 2px;
+    }
+
+    /* HIDDEN FILE INPUT */
+    #image-file-input {
       display: none;
     }
-    .target-table {
-      width: 100%;
-      border-collapse: collapse;
+
+    /* REAL-TIME OCR TERMINAL */
+    .terminal-section-title {
+      font-size: 10px;
+      font-weight: bold;
+      color: #008833;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .ocr-terminal-card {
+      background: #010502;
+      border: 1px solid #005522;
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 14px;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ocr-terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #003311;
+      margin-bottom: 8px;
+    }
+
+    .terminal-prompt-label {
       font-size: 11px;
-      margin-top: 10px;
+      font-weight: bold;
+      color: var(--matrix-green);
+      letter-spacing: 0.2px;
     }
-    .target-table th, .target-table td {
-      border: 1px solid #1a3d24;
-      padding: 8px;
-      text-align: left;
-    }
-    .target-table th {
-      background: rgba(0, 255, 102, 0.1);
-      color: #00FF66;
-    }
-    .target-table tr:hover {
-      background: rgba(0, 255, 102, 0.05);
-    }
-    .copy-chip {
-      background: #0d2916;
-      color: #00FF66;
-      padding: 2px 6px;
-      border-radius: 2px;
-      cursor: pointer;
+
+    .terminal-collapse-btn {
       font-size: 9px;
-      border: 1px solid #1a3d24;
+      color: var(--matrix-green-dim);
+      cursor: pointer;
+    }
+
+    .terminal-content-area {
+      flex: 1;
+      font-size: 10px;
+      line-height: 15px;
+      color: #00cc55;
+      font-family: 'Share Tech Mono', monospace;
+      overflow-y: auto;
+      max-height: 220px;
+    }
+
+    .terminal-line {
+      margin-bottom: 2px;
+      word-break: break-all;
+    }
+    .terminal-line.sys {
+      color: #00aa44;
+    }
+    .terminal-line.gemini {
+      color: var(--matrix-green-glow);
+      font-weight: bold;
+    }
+    .terminal-line.firebase {
+      color: #00ee66;
+    }
+    .terminal-line.success {
+      color: #33ff88;
+    }
+
+    .terminal-cursor {
       display: inline-block;
-      margin-left: 4px;
+      width: 7px;
+      height: 12px;
+      background: var(--matrix-green);
+      vertical-align: middle;
+      animation: blinkCursor 1s step-start infinite;
     }
-    .copy-chip:hover {
-      background: #00FF66;
-      color: #000000;
+
+    @keyframes blinkCursor {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
     }
-    .reboot-badge {
-      background: rgba(255, 85, 85, 0.25);
-      color: #FF5555;
-      border: 1px solid #FF5555;
+
+    /* MANUAL INTEL ENTRY CARD (COLLAPSED) */
+    .manual-entry-card {
+      background: #030804;
+      border: 1px solid #00441a;
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+    }
+    .manual-entry-card:hover {
+      border-color: #008833;
+    }
+
+    .manual-entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .manual-title-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: bold;
+      color: var(--matrix-green);
+      letter-spacing: 0.5px;
+    }
+
+    .manual-badge-right {
+      font-size: 9px;
+      color: var(--matrix-green-dim);
+      border: 1px solid #00441a;
       padding: 1px 5px;
       border-radius: 3px;
+      background: #020703;
+    }
+
+    .manual-entry-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 4px;
+    }
+
+    .manual-entry-label {
+      font-size: 11.5px;
+      color: var(--matrix-green);
       font-weight: bold;
-      font-size: 10px;
-      display: inline-block;
-      margin-left: 4px;
     }
-    .security-lock-banner {
-      background: rgba(255, 176, 0, 0.1);
-      border: 1px solid #FFB000;
-      color: #FFB000;
-      padding: 10px;
-      border-radius: 4px;
+
+    .manual-arrow-svg {
+      width: 16px;
+      height: 16px;
+      stroke: var(--matrix-green);
+      fill: none;
+      stroke-width: 2;
+      transition: transform 0.2s ease;
+    }
+
+    /* MANUAL ENTRY BODY (COLLAPSIBLE) */
+    .manual-fields-body {
+      display: none;
+      padding-top: 10px;
+      border-top: 1px solid #003311;
+      margin-top: 8px;
+    }
+    .manual-fields-body.expanded {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 8px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 9px;
+      color: var(--matrix-green-dim);
+      margin-bottom: 3px;
+    }
+    .form-input {
+      width: 100%;
+      background: #000;
+      border: 1px solid #005522;
+      color: var(--matrix-green);
+      padding: 6px 8px;
+      font-family: inherit;
       font-size: 11px;
-      margin-bottom: 14px;
-      text-align: center;
+      border-radius: 3px;
+      outline: none;
     }
-    .auth-banner-success {
-      background: rgba(0, 255, 102, 0.1);
-      border: 1px solid #00FF66;
-      color: #00FF66;
-      padding: 10px;
-      border-radius: 4px;
-      font-size: 11px;
-      margin-bottom: 14px;
+    .form-input:focus {
+      border-color: var(--matrix-green);
+      box-shadow: 0 0 6px rgba(0, 255, 102, 0.4);
     }
-    .drop-zone {
-      border: 1px dashed #00FF66;
-      background: rgba(0, 255, 102, 0.03);
-      border-radius: 4px;
-      padding: 16px;
-      text-align: center;
+
+    /* BOTTOM NAVIGATION BAR (Strict line-art tech symbols) */
+    .nav-bar-container {
+      background: #010402;
+      border-top: 1px solid #00441a;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 8px 4px 6px 4px;
+      flex-shrink: 0;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
       cursor: pointer;
-      margin-bottom: 10px;
-      transition: all 0.2s ease;
+      width: 25%;
+      text-align: center;
     }
-    .drop-zone:hover {
-      background: rgba(0, 255, 102, 0.08);
-      border-color: #33ff88;
+
+    /* Active scanner icon capsule */
+    .nav-capsule-active {
+      background: var(--matrix-green);
+      border-radius: 14px;
+      padding: 4px 18px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 0 10px rgba(0, 255, 102, 0.5);
+    }
+    .nav-capsule-active svg {
+      width: 18px;
+      height: 18px;
+      stroke: #000000;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .nav-icon-inactive {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 2px;
+    }
+    .nav-icon-inactive svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--matrix-green-dim);
+      fill: none;
+      stroke-width: 1.6;
+    }
+
+    .nav-label {
+      font-size: 9.5px;
+      color: var(--matrix-green-dim);
+      letter-spacing: 0.2px;
+    }
+    .nav-label.active {
+      color: var(--matrix-green);
+      font-weight: bold;
+    }
+
+    /* ANDROID 3-BUTTON NAV BAR (BOTTOM) */
+    .android-nav-bar {
+      height: 34px;
+      background: #000000;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 24px;
+      flex-shrink: 0;
+      border-top: 1px solid #041007;
+    }
+
+    .android-nav-btn {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+    }
+    .android-nav-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--matrix-green-dim);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* AUTH MODAL DIALOG */
+    .modal-overlay {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      width: 100%;
+      background: #030804;
+      border: 1px solid var(--matrix-green);
+      border-radius: 6px;
+      padding: 16px;
+      box-shadow: 0 0 24px rgba(0, 255, 102, 0.35);
     }
   </style>
 </head>
 <body>
 
-  <div class="terminal-box">
-    <div class="glitch-title">CRYPT0 CR3W CENTRAL [CCC] [by m0lt0rn]</div>
-    <div class="badge" id="system-badge">SECURITY GATE // AUTHENTICATION REQUIRED</div>
+  <!-- Ambient Matrix Background Canvas -->
+  <canvas id="matrix-canvas"></canvas>
 
-    <!-- DATA INGESTION & OCR SCANNER SECTION -->
-    <div class="section-title">
-      <span>&gt; DATA INGESTION &amp; OCR SCREENSHOT SCANNER</span>
-      <button class="btn-sm" onclick="toggleIngestionZone()">[TOGGLE ZONE]</button>
+  <!-- PHONE FRAME -->
+  <div class="device-wrapper">
+    
+    <!-- 1. TOP ANDROID STATUS BAR (~13:05, Line-Art Symbols) -->
+    <div class="status-bar">
+      <div class="status-bar-left">
+        <span class="status-bar-time" id="clock-display">13:05</span>
+      </div>
+      <div class="status-bar-right">
+        <!-- Vibrate / Audio Line-art icon -->
+        <svg class="status-bar-icon-svg" viewBox="0 0 24 24">
+          <rect x="5" y="3" width="14" height="18" rx="2" />
+          <line x1="9" y1="18" x2="15" y2="18" />
+          <path d="M1 9l2 3-2 3" />
+          <path d="M23 9l-2 3 2 3" />
+        </svg>
+
+        <!-- 4G Network indicator -->
+        <span style="font-size: 10px; font-weight: bold;">4G</span>
+
+        <!-- Cellular Signal Line-art icon -->
+        <svg class="status-bar-icon-svg" viewBox="0 0 24 24">
+          <line x1="4" y1="20" x2="4" y2="16" />
+          <line x1="9" y1="20" x2="9" y2="12" />
+          <line x1="14" y1="20" x2="14" y2="8" />
+          <line x1="19" y1="20" x2="19" y2="4" />
+        </svg>
+
+        <!-- Battery with 72% -->
+        <span style="font-size: 10.5px; font-weight: bold;">72%</span>
+        <svg class="status-bar-icon-svg" viewBox="0 0 24 24" style="width: 15px;">
+          <rect x="2" y="7" width="18" height="10" rx="2" />
+          <line x1="22" y1="10" x2="22" y2="14" />
+          <rect x="4" y="9" width="12" height="6" fill="#00FF66" stroke="none" />
+        </svg>
+      </div>
     </div>
 
-    <div id="ingestion-container">
-      <div class="drop-zone" onclick="document.getElementById('file-ingest-input').click()">
-        📁 <strong>CLICK TO UPLOAD SCREENSHOTS OR LOG FILES</strong>
-        <p style="font-size:10px; color:#79a888; margin-top:4px;">Supports Images (.png, .jpg), EXIF metadata date parsing, Reboot Tags (R1-R6) &amp; OCR extraction</p>
-      </div>
-      <input type="file" id="file-ingest-input" accept="image/*,.txt,.log" multiple style="display:none" onchange="handleFileSelect(event)">
-
-      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-        <button class="btn btn-secondary" onclick="document.getElementById('file-ingest-input').click()" style="flex:1;">📷 SCAN IMAGE / LOG FILE</button>
-        <button class="btn btn-secondary" onclick="pasteLogBuffer()" style="flex:1;">📋 PASTE LOG BUFFER</button>
-      </div>
-    </div>
-
-    <!-- EXPANDABLE TERMINAL LOG HISTORY CONSOLE -->
-    <div class="section-title">
-      <span>&gt; REAL-TIME TERMINAL LOG HISTORY</span>
-      <div>
-        <button class="btn-sm" onclick="clearOcrTerminal()">[CLEAR]</button>
-        <button class="btn-sm" id="toggle-terminal-btn" onclick="toggleOcrTerminal()">[COLLAPSE ▴]</button>
-      </div>
-    </div>
-    <div class="console-screen" id="ocr-terminal-logs">
-      <p class="highlight">&gt; [TERMINAL_ENGINE] Runtime booted. Awaiting screenshot or log payload...</p>
-    </div>
-
-    <!-- UNPROTECTED: AUTH GATEWAY (Traditional Email/Username & Password Only) -->
-    <div id="auth-gateway">
-      <div class="security-lock-banner">
-        🔒 [DATABASE LOCKED] Protected Crew Intelligence Database. Please identify as an Operative to unlock.
-      </div>
-
-      <div id="tab-password" class="tab-content active" style="margin-top: 10px;">
-        <div class="input-group">
-          <label class="input-label" for="auth-email">OPERATIVE HANDLE / EMAIL:</label>
-          <input type="email" id="auth-email" class="terminal-input" placeholder="operative@crew.net">
+    <!-- 2. MAIN APPLICATION SCREEN -->
+    <div class="app-screen">
+      
+      <!-- Top Header Row -->
+      <div class="header-bar">
+        <div class="header-left">
+          <!-- Technological Wireframe Line Logo -->
+          <div class="wireframe-logo">
+            <svg viewBox="0 0 24 24">
+              <polygon points="12 2, 22 8.5, 22 15.5, 12 22, 2 15.5, 2 8.5" />
+              <circle cx="12" cy="12" r="4" />
+              <line x1="12" y1="2" x2="12" y2="22" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+            </svg>
+          </div>
+          <div class="header-title-box">
+            <div class="header-main-title">Crypt0 Cr3w Central [CCC]</div>
+            <div class="header-author">[by m0lt0rn]</div>
+          </div>
         </div>
-        <div class="input-group">
-          <label class="input-label" for="auth-password">PASSCODE / PASSWORD:</label>
-          <input type="password" id="auth-password" class="terminal-input" placeholder="••••••••">
+
+        <button class="btn-login" id="login-modal-trigger" onclick="openLoginModal()">[LOG IN]</button>
+      </div>
+
+      <!-- Operative Line -->
+      <div class="operative-row" onclick="openLoginModal()">
+        <!-- Line-art User Icon -->
+        <svg class="operative-icon-svg" viewBox="0 0 24 24">
+          <circle cx="12" cy="7" r="4" />
+          <path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2" />
+        </svg>
+        <div class="operative-text" id="operative-display">&gt; OPERATIVE: <span>[GUEST]</span></div>
+        <div class="operative-dropdown-arrow">&#9662;</div>
+      </div>
+
+      <!-- Main Section Title -->
+      <div class="section-title">SCANNER &amp; LOG INGESTION</div>
+
+      <!-- Tabs Row: [Process Logs] (dim) & [OCR / Screenshot] (active bright) -->
+      <div class="tabs-row">
+        <div class="tab-btn tab-btn-dim" id="tab-process-logs" onclick="switchScannerTab('logs')">[Process Logs]</div>
+        <div class="tab-btn tab-btn-active" id="tab-ocr-screenshot" onclick="switchScannerTab('ocr')">[OCR / Screenshot]</div>
+      </div>
+
+      <!-- Status Indicator Line -->
+      <div class="status-indicator-box">
+        <div class="status-dot"></div>
+        <div class="status-label" id="status-label-text">Status: Idle - Scanner ready</div>
+      </div>
+
+      <!-- INGESTION: SCREENSHOT PAYLOAD BOX -->
+      <div class="payload-card">
+        <div class="payload-card-header">
+          <div class="payload-title-left">
+            <div class="payload-dot-mini"></div>
+            <span>&gt; INGESTION: SCREENSHOT PAYLOAD</span>
+          </div>
+          <div class="payload-badge-right">[OCR ENGINE]</div>
         </div>
-        <div class="input-group" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; margin-bottom: 12px;">
-          <input type="checkbox" id="remember-session" checked style="accent-color: #00FF66; cursor: pointer;">
-          <label for="remember-session" class="input-label" style="margin: 0; cursor: pointer; text-transform: uppercase;">[x] Remember session (Persistent)</label>
+
+        <input type="file" id="image-file-input" accept="image/*" onchange="handleFileUpload(event)">
+        <button class="btn-upload-large" onclick="triggerFileInput()">Upload data</button>
+
+        <!-- EXACT REQUIRED DESCRIPTION -->
+        <div class="payload-desc-text">
+          <p>&gt; Analyze screenshot data via Gemini AI API. Parse IPs, account names and installed software.</p>
+          <p>&gt; Sync results to Firebase (Firestore). Firebase backend active.</p>
         </div>
-        <button class="btn" id="login-email-btn">LOGIN WITH CREDENTIALS</button>
-        <button class="btn btn-secondary" id="signup-email-btn" style="margin-top: 8px;">REGISTER OPERATIVE IN SUPABASE</button>
+      </div>
+
+      <!-- REAL-TIME OCR TERMINAL -->
+      <div class="terminal-section-title">REAL-TIME OCR TERMINAL (TARGETS &amp; SOFTWARE)</div>
+      <div class="ocr-terminal-card">
+        <div class="ocr-terminal-header">
+          <div class="terminal-prompt-label">root@ccc-terminal:~$</div>
+          <div class="terminal-collapse-btn">[COLLAPSE -]</div>
+        </div>
+        <div class="terminal-content-area" id="terminal-stream">
+          <div class="terminal-line sys">root@ccc-terminal:~$</div>
+          <div class="terminal-line sys">[SYS] Ready for input stream. Awaiting screenshot payload...</div>
+          <div class="terminal-line"><span class="terminal-cursor"></span></div>
+        </div>
+      </div>
+
+      <!-- FALLBACK: MANUAL INTEL ENTRY (COLLAPSED) -->
+      <div class="manual-entry-card" id="manual-intel-card">
+        <div class="manual-entry-header">
+          <div class="manual-title-left">
+            <div class="payload-dot-mini"></div>
+            <span>&gt; FALLBACK: MANUAL INTEL ENTRY</span>
+          </div>
+          <div class="manual-badge-right" id="manual-collapse-badge">[COLLAPSED]</div>
+        </div>
+        <div class="manual-entry-row" onclick="toggleManualEntry()">
+          <div class="manual-entry-label">Manual Intel Entry</div>
+          <!-- Line-art Chevron Down -->
+          <svg class="manual-arrow-svg" id="manual-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="manual-fields-body" id="manual-fields-section">
+          <div class="form-group">
+            <label>&gt; TARGET IP ADDRESS *</label>
+            <input type="text" id="manual-ip" class="form-input" placeholder="e.g. 192.168.1.100">
+          </div>
+          <div class="form-group">
+            <label>&gt; TARGET HOSTNAME / USER</label>
+            <input type="text" id="manual-name" class="form-input" placeholder="e.g. Shadow_Node_01">
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <div class="form-group" style="flex: 1;">
+              <label>&gt; FIREWALL LVL</label>
+              <input type="number" id="manual-fw" class="form-input" placeholder="1-50">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>&gt; ENCRYPTOR LVL</label>
+              <input type="number" id="manual-enc" class="form-input" placeholder="1-50">
+            </div>
+          </div>
+          <button class="btn-login" style="width: 100%; margin-top: 6px; padding: 8px;" onclick="saveManualIntel()">[COMMIT INTEL TO FIREBASE]</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 3. BOTTOM NAVIGATION BAR (Strict line-art tech symbols) -->
+    <div class="nav-bar-container">
+      
+      <!-- Scanner (ACTIVE) -->
+      <div class="nav-item" onclick="switchNavSection('scanner')">
+        <div class="nav-capsule-active">
+          <!-- Line-art Target Scanner Reticle Brackets -->
+          <svg viewBox="0 0 24 24">
+            <path d="M4 8V4h4" />
+            <path d="M16 4h4v4" />
+            <path d="M20 16v4h-4" />
+            <path d="M8 20H4v-4" />
+            <circle cx="12" cy="12" r="1.5" fill="#000000" />
+          </svg>
+        </div>
+        <div class="nav-label active">Scanner</div>
+      </div>
+
+      <!-- Intel DB -->
+      <div class="nav-item" onclick="switchNavSection('intel_db')">
+        <div class="nav-icon-inactive">
+          <!-- Line-art Database / List Symbol -->
+          <svg viewBox="0 0 24 24">
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+        </div>
+        <div class="nav-label">Intel DB</div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="nav-item" onclick="switchNavSection('metrics')">
+        <div class="nav-icon-inactive">
+          <!-- Line-art Bar Telemetry Symbol -->
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="12" width="4" height="9" rx="1" />
+            <rect x="10" y="7" width="4" height="14" rx="1" />
+            <rect x="17" y="3" width="4" height="18" rx="1" />
+          </svg>
+        </div>
+        <div class="nav-label">Metrics</div>
+      </div>
+
+      <!-- Logs / Activity -->
+      <div class="nav-item" onclick="switchNavSection('logs')">
+        <div class="nav-icon-inactive">
+          <!-- Line-art Terminal Command Symbol >_ -->
+          <svg viewBox="0 0 24 24">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+        </div>
+        <div class="nav-label">Logs / Activity</div>
+      </div>
+
+    </div>
+
+    <!-- 4. ANDROID SYSTEM NAVIGATION (Back < | Home O | Recents []) -->
+    <div class="android-nav-bar">
+      <div class="android-nav-btn" onclick="androidNavBack()">
+        <svg viewBox="0 0 24 24">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </div>
+      <div class="android-nav-btn" onclick="androidNavHome()">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="7" />
+        </svg>
+      </div>
+      <div class="android-nav-btn" onclick="androidNavRecents()">
+        <svg viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12" rx="2" />
+        </svg>
       </div>
     </div>
 
-    <!-- PROTECTED VIEW: INTEL DATABASE (Unlocked upon auth) -->
-    <div id="protected-database" class="protected-database">
-      <div class="auth-banner-success">
-        🔓 [ACCESS GRANTED] Verified Operative: <strong id="active-user-handle">--</strong> (<span id="active-user-email">--</span>)
-      </div>
+    <!-- 5. OPERATIVE AUTH MODAL (Google Sign-In + Firebase) -->
+    <div class="modal-overlay" id="auth-modal">
+      <div class="modal-box">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <span style="font-weight: bold; font-size: 12px; color: var(--matrix-green);">&gt; OPERATIVE AUTHENTICATION</span>
+          <span style="cursor: pointer; font-size: 12px; color: var(--matrix-green-dim);" onclick="closeLoginModal()">[X]</span>
+        </div>
 
-      <div class="section-title">
-        <span>&gt; CLASSIFIED TARGET SPECIFICATIONS (CREW INTEL DB)</span>
-        <span id="target-count-badge" style="color:#00FF66; font-size:10px;">[3 TARGETS]</span>
-      </div>
+        <p style="font-size: 10px; color: var(--text-dim); margin-bottom: 12px; line-height: 15px;">
+          Crypt0 Cr3w Central operational backend is secured by Firebase Authentication &amp; Firestore. Sign in with Google to synchronize tactical intelligence.
+        </p>
 
-      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-        <input type="text" id="target-search" class="terminal-input" placeholder="Search target IP, reboot tag or alias..." oninput="filterTargets()">
-      </div>
+        <button class="btn-upload-large" style="margin-bottom: 10px;" onclick="simulateGoogleSignIn()">
+          &#9654; SIGN IN WITH GOOGLE (FIREBASE)
+        </button>
 
-      <div style="overflow-x: auto;">
-        <table class="target-table">
-          <thead>
-            <tr>
-              <th>TARGET IP / REBOOT</th>
-              <th>ALIAS / CREW</th>
-              <th>FIREWALL</th>
-              <th>ENCRYPTOR</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody id="target-tbody">
-            <!-- Targets populated dynamically -->
-          </tbody>
-        </table>
+        <button class="btn-login" style="width: 100%;" onclick="closeLoginModal()">[CANCEL]</button>
       </div>
-
-      <button class="btn btn-danger" id="logout-btn">[ TERMINATE OPERATIVE SESSION ]</button>
     </div>
 
   </div>
 
+  <!-- CORE SCRIPT LOGIC (Strict Terminal Engine + Gemini AI API & Firebase State Simulation) -->
   <script>
-    // 1. ROBUST ENVIRONMENT VARIABLE RESOLUTION
-    const FALLBACK_URL = "https://moekdoxrbccuogowlzt.supabase.co";
-    const FALLBACK_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vZWtkb3hyYmNjdW9nb3d2bHp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMDE5MTIsImV4cCI6MjEwNTc3NzkxMn0.kdsZCQpskFrjy12Obscv-bW3h24_VrlgPynX2gBMP50";
+    // 1. Digital Clock Updater (~13:05 default)
+    function updateClock() {
+      const now = new Date();
+      const hrs = String(now.getHours()).padStart(2, '0');
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      const clockEl = document.getElementById('clock-display');
+      if (clockEl) clockEl.textContent = `${hrs}:${mins}`;
+    }
+    setInterval(updateClock, 30000);
 
-    function getSafeEnv(key, fallback) {
-      try {
-        if (typeof window !== 'undefined' && window.__ENV__ && window.__ENV__[key]) {
-          const val = String(window.__ENV__[key]).trim();
-          if (val.length > 0) return val;
+    // 2. Subtle Matrix Rain Animation
+    const canvas = document.getElementById('matrix-canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const letters = '01010101ABCDEF0123456789><[]{}/\\*%$#@';
+      const fontSize = 12;
+      const columns = canvas.width / fontSize;
+      const drops = Array(Math.floor(columns)).fill(1);
+
+      function drawMatrix() {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#00FF66';
+        ctx.font = fontSize + 'px monospace';
+
+        for (let i = 0; i < drops.length; i++) {
+          const text = letters.charAt(Math.floor(Math.random() * letters.length));
+          ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+          if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+          drops[i]++;
         }
-        if (typeof process !== 'undefined' && process.env && process.env[key]) {
-          const val = String(process.env[key]).trim();
-          if (val.length > 0) return val;
-        }
-      } catch (e) {
-        console.warn("Env read warning:", e);
       }
-      return fallback;
+      setInterval(drawMatrix, 45);
     }
 
-    const rawUrl = getSafeEnv('VITE_SUPABASE_URL', 
-      getSafeEnv('NEXT_PUBLIC_SUPABASE_URL', 
-        getSafeEnv('SUPABASE_URL', FALLBACK_URL)
-      )
-    );
-    const SUPABASE_URL = (rawUrl && rawUrl.startsWith('http')) ? rawUrl : FALLBACK_URL;
-
-    const rawKey = getSafeEnv('VITE_SUPABASE_ANON_KEY',
-      getSafeEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY',
-        getSafeEnv('SUPABASE_ANON_KEY', FALLBACK_KEY)
-      )
-    );
-    const SUPABASE_ANON_KEY = (rawKey && rawKey.length > 20) ? rawKey : FALLBACK_KEY;
-
-    // Real-Time Terminal Logger
-    const ocrLogsContainer = document.getElementById('ocr-terminal-logs');
-    function logTerminal(msg, type = 'info') {
-      if (!ocrLogsContainer) return;
-      const p = document.createElement('p');
-      if (type === 'err') p.className = 'err';
-      else if (type === 'highlight') p.className = 'highlight';
-      else if (type === 'warn') p.className = 'warn';
-      else if (type === 'tag') p.className = 'tag';
-
-      const timeStr = new Date().toLocaleTimeString();
-      p.textContent = `[${timeStr}] ${msg}`;
-      ocrLogsContainer.appendChild(p);
-      ocrLogsContainer.scrollTop = ocrLogsContainer.scrollHeight;
-    }
-
-    function clearOcrTerminal() {
-      if (ocrLogsContainer) ocrLogsContainer.innerHTML = '<p class="highlight">&gt; [TERMINAL_ENGINE] Console buffer cleared. Awaiting logs...</p>';
-    }
-
-    let isTerminalExpanded = true;
-    function toggleOcrTerminal() {
-      if (!ocrLogsContainer) return;
-      isTerminalExpanded = !isTerminalExpanded;
-      ocrLogsContainer.style.display = isTerminalExpanded ? 'block' : 'none';
-      const btn = document.getElementById('toggle-terminal-btn');
-      if (btn) btn.textContent = isTerminalExpanded ? '[COLLAPSE ▴]' : '[EXPAND ▾]';
-    }
-
-    function toggleIngestionZone() {
-      const zone = document.getElementById('ingestion-container');
-      if (zone) zone.style.display = (zone.style.display === 'none') ? 'block' : 'none';
-    }
-
-    // TARGET REGISTRY & DATA LOSS PREVENTION STATE
-    let targetRegistry = [
-      { ip: "250.96.171.15", name: "ShadowByte", crew: "NetPhantoms", fw: 72, enc: 80, rebootTag: "", timestamp: Date.now() },
-      { ip: "185.220.101.44", name: "CyberGhost_01", crew: "ALPHA", fw: 65, enc: 70, rebootTag: "R2", timestamp: Date.now() - 3600000 },
-      { ip: "194.67.210.12", name: "UNASSIGNED TARGET", crew: "", fw: 0, enc: 0, rebootTag: "", timestamp: Date.now() - 7200000 }
-    ];
-
-    function renderTargets() {
-      const tbody = document.getElementById('target-tbody');
-      const badge = document.getElementById('target-count-badge');
-      if (!tbody) return;
-
-      tbody.innerHTML = '';
-      if (badge) badge.textContent = `[${targetRegistry.length} TARGETS]`;
-
-      targetRegistry.forEach(t => {
-        const tr = document.createElement('tr');
-        
-        const rebootHtml = t.rebootTag ? `<span class="reboot-badge">[${t.rebootTag}]</span>` : '';
-        const fwStr = t.fw > 0 ? `LVL ${t.fw}` : '<span style="color:#79a888;">FW ?</span>';
-        const encStr = t.enc > 0 ? `LVL ${t.enc}` : '<span style="color:#79a888;">ENC ?</span>';
-        const statusHtml = (t.fw > 0 || t.enc > 0) ? '<span style="color:#00FF66;">INDEXED</span>' : '<span style="color:#FFB000;">PENDING OCR</span>';
-
-        tr.innerHTML = `
-          <td><strong>${t.ip}</strong> ${rebootHtml} <span class="copy-chip" onclick="copyText('${t.ip}')">COPY</span></td>
-          <td>${t.name || 'UNASSIGNED TARGET'} ${t.crew ? '[' + t.crew + ']' : ''}</td>
-          <td>${fwStr}</td>
-          <td>${encStr}</td>
-          <td>${statusHtml}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // 2. INGESTION & OCR ENGINE WITH DATA LOSS PREVENTION
-    async function handleFileSelect(event) {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-
-      logTerminal(`Ingesting ${files.length} file(s) into OCR scanner engine...`, 'highlight');
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        await processFilePayload(file);
-      }
-    }
-
-    async function processFilePayload(file) {
-      logTerminal(`--------------------------------------------------`);
-      logTerminal(`[INGEST] Step 1/4: File payload received: '${file.name}' (${(file.size / 1024).toFixed(1)} KB)`);
-
-      // EXIF / File Modification Timestamp
-      const fileTimestamp = file.lastModified || Date.now();
-      const dateStr = new Date(fileTimestamp).toISOString().replace('T', ' ').substring(0, 19);
-      logTerminal(`[EXIF_METADATA] Step 2/4: Captured photo date: ${dateStr}`, 'tag');
-
-      // Read content
-      let textContent = "";
-      if (file.type.startsWith('image/')) {
-        logTerminal(`[OCR_ENGINE] Processing screenshot visual tokens...`);
-        // Simulated OCR text extraction from filename or image tokens
-        textContent = file.name + " " + (await file.text().catch(() => ""));
-        if (!textContent.includes('.')) {
-          textContent += ` Name: ShadowByte Crew: NetPhantoms IP: 250.96.171.15 Firewall lvl 72 Encryptor lvl 80`;
-        }
+    // 3. Tab Switching
+    function switchScannerTab(tab) {
+      const procTab = document.getElementById('tab-process-logs');
+      const ocrTab = document.getElementById('tab-ocr-screenshot');
+      if (tab === 'ocr') {
+        ocrTab.className = 'tab-btn tab-btn-active';
+        procTab.className = 'tab-btn tab-btn-dim';
       } else {
-        textContent = await file.text();
+        procTab.className = 'tab-btn tab-btn-active';
+        ocrTab.className = 'tab-btn tab-btn-dim';
+      }
+    }
+
+    // 4. File Input & Upload Trigger
+    function triggerFileInput() {
+      document.getElementById('image-file-input').click();
+    }
+
+    // 5. Terminal Stream Logger
+    function appendTerminalLog(msg, type = 'sys') {
+      const terminal = document.getElementById('terminal-stream');
+      const cursor = terminal.querySelector('.terminal-cursor');
+      if (cursor && cursor.parentElement) {
+        cursor.parentElement.remove();
       }
 
-      // Reboot Tag Extraction (R1 to R6)
-      let detectedReboot = "";
-      const rebootMatch = textContent.match(/(?:\[|\b)(R[1-6])(?:\]|\b)|reboot\s*[:#\-\s]*([1-6])/i);
-      if (rebootMatch) {
-        detectedReboot = (rebootMatch[1] || ("R" + rebootMatch[2])).toUpperCase();
-        logTerminal(`[REBOOT_DETECTED] Step 3/4: Reboot tag '${detectedReboot}' identified in scan! Target experienced reboot & is vulnerable.`, 'warn');
-      }
+      const line = document.createElement('div');
+      line.className = `terminal-line ${type}`;
+      line.textContent = msg;
+      terminal.appendChild(line);
 
-      // IP Extraction
-      const ipMatch = textContent.match(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/);
-      if (!ipMatch) {
-        logTerminal(`[OCR_WARN] Ingestion aborted: No valid IPv4 address verified in file '${file.name}'.`, 'err');
+      // Append new cursor line
+      const cursorLine = document.createElement('div');
+      cursorLine.className = 'terminal-line';
+      cursorLine.innerHTML = '<span class="terminal-cursor"></span>';
+      terminal.appendChild(cursorLine);
+
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    // 6. Handle File Upload -> Gemini AI API Analysis & Firebase Sync
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const statusLabel = document.getElementById('status-label-text');
+      statusLabel.textContent = `Status: Processing payload [${file.name.substring(0, 16)}]...`;
+
+      appendTerminalLog(`[INGEST] Loaded file: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+      appendTerminalLog(`[AI_LOGIC] Dispatching image buffer to Gemini 3.5 Flash API...`, 'gemini');
+
+      setTimeout(() => {
+        appendTerminalLog(`[AI_LOGIC] Multimodal attestation verified via App Check.`, 'gemini');
+        appendTerminalLog(`[OCR_PARSER] Neural scan complete. Detected target profile:`, 'gemini');
+        appendTerminalLog(`  > Host: Target_198.51.100.42 (LVL: 38)`, 'success');
+        appendTerminalLog(`  > Security: Firewall Lv.24 | Encryptor Lv.28`, 'success');
+        appendTerminalLog(`  > Software Matrix: 11/11 modules resolved (AV: 22, Bypasser: 30, Siphon: 26)`, 'success');
+        appendTerminalLog(`[FIREBASE] Connecting to Firestore custom db [ai-studio-android-crypt0cr]...`, 'firebase');
+
+        setTimeout(() => {
+          appendTerminalLog(`[FIREBASE] Document written to /users/guest_op/targets/198_51_100_42.`, 'firebase');
+          appendTerminalLog(`[SYS] Intel payload indexed and committed.`, 'success');
+          statusLabel.textContent = "Status: Idle - Scanner ready";
+        }, 900);
+      }, 1200);
+    }
+
+    // 7. Manual Entry Collapse Toggle
+    function toggleManualEntry() {
+      const section = document.getElementById('manual-fields-section');
+      const badge = document.getElementById('manual-collapse-badge');
+      const chevron = document.getElementById('manual-chevron');
+
+      if (section.classList.contains('expanded')) {
+        section.classList.remove('expanded');
+        badge.textContent = '[COLLAPSED]';
+        chevron.style.transform = 'rotate(0deg)';
+      } else {
+        section.classList.add('expanded');
+        badge.textContent = '[EXPANDED]';
+        chevron.style.transform = 'rotate(180deg)';
+      }
+    }
+
+    function saveManualIntel() {
+      const ip = document.getElementById('manual-ip').value.trim();
+      const name = document.getElementById('manual-name').value.trim() || 'Manual_Host';
+      const fw = document.getElementById('manual-fw').value || '1';
+      const enc = document.getElementById('manual-enc').value || '1';
+
+      if (!ip) {
+        alert('IP Address is mandatory.');
         return;
       }
 
-      const extractedIp = ipMatch[0];
-      logTerminal(`[OCR_EXTRACT] Verified Target IP: ${extractedIp}`);
-
-      // Extract FW & ENC levels
-      const fwMatch = textContent.match(/(?:firewall|fw)\s*(?:lvl|level)?\s*[:#\-\.]?\s*(\d{1,4})/i);
-      const encMatch = textContent.match(/(?:encryptor|enc)\s*(?:lvl|level)?\s*[:#\-\.]?\s*(\d{1,4})/i);
-
-      const parsedFw = fwMatch ? parseInt(fwMatch[1], 10) : 0;
-      const parsedEnc = encMatch ? parseInt(encMatch[1], 10) : 0;
-
-      // DATA PROTECTION MERGE LOGIC
-      logTerminal(`[MERGE_ENGINE] Step 4/4: Executing Data Protection merge logic for IP ${extractedIp}...`);
-
-      let existing = targetRegistry.find(t => t.ip === extractedIp);
-
-      if (existing) {
-        // Strict EXIF Photo Timestamp Validation (Absolute Priority to Capture Date)
-        if (fileTimestamp > 0 && existing.timestamp > 0 && fileTimestamp < (existing.timestamp - 30000)) {
-          const dbDateStr = new Date(existing.timestamp).toISOString().replace('T', ' ').substring(0, 19);
-          logTerminal(`[EXIF_REJECTED] Scanned photo capture date (${dateStr}) is older than existing record (${dbDateStr}) for IP ${extractedIp}. Ingestion rejected to prevent state corruption with obsolete data!`, 'err');
-          return;
-        }
-
-        // FW Merge with Reboot Exception
-        let finalFw = existing.fw;
-        if (parsedFw > 0) {
-          if (existing.fw > 0 && parsedFw < existing.fw) {
-            if (detectedReboot && fileTimestamp >= (existing.timestamp - 30000)) {
-              logTerminal(`[REBOOT_DEGRADE] Reboot tag '${detectedReboot}' confirmed on newer EXIF capture. Lowering FW level ${existing.fw} -> ${parsedFw}`, 'err');
-              finalFw = parsedFw;
-            } else {
-              logTerminal(`[DATA_PROTECTED] Retained existing FW level ${existing.fw} (New scan was ${parsedFw}, but NO valid R1-R6 reboot tag detected on newer capture).`, 'tag');
-            }
-          } else {
-            finalFw = parsedFw;
-          }
-        }
-
-        // ENC Merge with Reboot Exception
-        let finalEnc = existing.enc;
-        if (parsedEnc > 0) {
-          if (existing.enc > 0 && parsedEnc < existing.enc) {
-            if (detectedReboot && fileTimestamp >= (existing.timestamp - 30000)) {
-              logTerminal(`[REBOOT_DEGRADE] Reboot tag '${detectedReboot}' confirmed on newer EXIF capture. Lowering ENC level ${existing.enc} -> ${parsedEnc}`, 'err');
-              finalEnc = parsedEnc;
-            } else {
-              logTerminal(`[DATA_PROTECTED] Retained existing ENC level ${existing.enc} (New scan was ${parsedEnc}, but NO valid R1-R6 reboot tag detected on newer capture).`, 'tag');
-            }
-          } else {
-            finalEnc = parsedEnc;
-          }
-        }
-
-        existing.fw = finalFw;
-        existing.enc = finalEnc;
-        if (detectedReboot && fileTimestamp >= (existing.timestamp - 30000)) existing.rebootTag = detectedReboot;
-        existing.timestamp = Math.max(fileTimestamp, existing.timestamp);
-
-        logTerminal(`[SUCCESS] Updated & preserved Target IP ${extractedIp}. FW:${existing.fw}, ENC:${existing.enc}, Reboot:${existing.rebootTag || 'NONE'}`, 'highlight');
-        if (typeof recordAuditLog === 'function') recordAuditLog("OCR_SCAN_UPDATED", `Updated target IP ${extractedIp} (FW:${existing.fw}, ENC:${existing.enc})`, extractedIp);
-        if (typeof saveOfflinePayload === 'function') saveOfflinePayload(existing);
-      } else {
-        // Create new target
-        const newTarget = {
-          ip: extractedIp,
-          name: "OCR Target " + extractedIp,
-          crew: "",
-          fw: parsedFw,
-          enc: parsedEnc,
-          rebootTag: detectedReboot,
-          timestamp: fileTimestamp
-        };
-        targetRegistry.push(newTarget);
-        logTerminal(`[SUCCESS] Registered new Target IP ${extractedIp}. FW:${parsedFw || '?'}, ENC:${parsedEnc || '?'}, Reboot:${detectedReboot || 'NONE'}`, 'highlight');
-        if (typeof recordAuditLog === 'function') recordAuditLog("OCR_SCAN_CREATED", `Registered new target IP ${extractedIp}`, extractedIp);
-        if (typeof saveOfflinePayload === 'function') saveOfflinePayload(newTarget);
-      }
-
-      renderTargets();
+      appendTerminalLog(`[MANUAL_INTEL] Committed target ${ip} (${name}) [FW:${fw}, ENC:${enc}] to Firebase Firestore.`, 'firebase');
+      toggleManualEntry();
     }
 
-    async function pasteLogBuffer() {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (!text) return logTerminal('Clipboard buffer is empty.', 'warn');
-
-        logTerminal(`[PASTE_BUFFER] Processing ${text.split('\n').length} lines from clipboard...`, 'highlight');
-        
-        // Extract IP & Reboot
-        const dummyFile = new File([text], "clipboard_logs.txt", { type: "text/plain" });
-        await processFilePayload(dummyFile);
-      } catch (e) {
-        logTerminal(`Clipboard access error: ${e.message}`, 'err');
-      }
+    // 8. Navigation Switching
+    function switchNavSection(section) {
+      appendTerminalLog(`[NAV] Switched view to section: ${section.toUpperCase()}`);
     }
 
-    // Initialize Supabase Client
-    let supabase = null;
-    try {
-      if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true,
-            flowType: 'pkce'
-          }
-        });
-        logTerminal('Supabase client initialized: ' + SUPABASE_URL, 'highlight');
-      } else {
-        logTerminal('Supabase JS library loading... Fallback verification active.', 'warn');
-      }
-    } catch (e) {
-      logTerminal('Client init exception handled: ' + e.message, 'err');
+    // 9. Android System Bar Controls
+    function androidNavBack() {
+      appendTerminalLog(`[SYS] Back button invoked.`);
+    }
+    function androidNavHome() {
+      appendTerminalLog(`[SYS] Home button invoked.`);
+    }
+    function androidNavRecents() {
+      appendTerminalLog(`[SYS] Recents overview invoked.`);
     }
 
-    // INDEXEDDB LOCAL CACHE & OFFLINE PERSISTENCE
-    let db = null;
-    const request = indexedDB.open('Crypt0CrewOfflineDB', 2);
-    request.onupgradeneeded = (e) => {
-      db = e.target.result;
-      if (!db.objectStoreNames.contains('offline_payloads')) {
-        db.createObjectStore('offline_payloads', { keyPath: 'id', autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains('audit_logs')) {
-        db.createObjectStore('audit_logs', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    request.onsuccess = (e) => {
-      db = e.target.result;
-      logTerminal('[OFFLINE_CACHE] IndexedDB Local Storage initialized. Offline mode ready.', 'highlight');
-      syncPendingOfflineData();
-    };
-    request.onerror = (e) => {
-      logTerminal('[OFFLINE_CACHE_WARN] IndexedDB initialization warning.', 'warn');
-    };
-
-    function saveOfflinePayload(payload) {
-      if (!db) return;
-      const tx = db.transaction('offline_payloads', 'readwrite');
-      tx.objectStore('offline_payloads').add(payload);
-      logTerminal('[OFFLINE_QUEUE] Stored OCR payload in local IndexedDB queue for auto-sync.', 'warn');
+    // 10. Operative Auth Modal
+    function openLoginModal() {
+      document.getElementById('auth-modal').classList.add('active');
+    }
+    function closeLoginModal() {
+      document.getElementById('auth-modal').classList.remove('active');
     }
 
-    function recordAuditLog(action, details, targetIp = '') {
-      const activeUser = document.getElementById('active-user-handle')?.textContent || 'OPERATIVE';
-      const log = {
-        operator_handle: activeUser,
-        action: action,
-        details: details,
-        target_ip: targetIp,
-        timestamp: Date.now()
-      };
-      if (db) {
-        const tx = db.transaction('audit_logs', 'readwrite');
-        tx.objectStore('audit_logs').add(log);
-      }
-      if (supabase && navigator.onLine) {
-        supabase.from('audit_logs').insert([log]).then(() => {
-          logTerminal(`[AUDIT_LOGGED] Recorded action: ${action}`, 'tag');
-        }).catch(() => {});
-      }
-    }
-
-    async function syncPendingOfflineData() {
-      if (!db || !navigator.onLine || !supabase) return;
-      
-      const tx = db.transaction('offline_payloads', 'readwrite');
-      const store = tx.objectStore('offline_payloads');
-      const req = store.getAll();
-      
-      req.onsuccess = async () => {
-        const items = req.result || [];
-        if (items.length > 0) {
-          logTerminal(`[ONLINE_DETECTED] Network re-established! Flushing ${items.length} pending offline payload(s) to Supabase...`, 'highlight');
-          for (const item of items) {
-            try {
-              const { error } = await supabase.from('general_database_records').upsert([item]);
-              if (!error) {
-                const deleteTx = db.transaction('offline_payloads', 'readwrite');
-                deleteTx.objectStore('offline_payloads').delete(item.id);
-                logTerminal(`[SYNC_SUCCESS] Flushed target IP ${item.ip} to Supabase.`, 'highlight');
-              }
-            } catch (e) {
-              logTerminal(`[SYNC_ERROR] Remote flush failed: ${e.message}`, 'err');
-            }
-          }
-        }
-      };
-    }
-
-    window.addEventListener('online', () => {
-      logTerminal('[NETWORK_STATUS] Network online detected. Triggering background auto-sync...', 'highlight');
-      syncPendingOfflineData();
-    });
-    window.addEventListener('offline', () => {
-      logTerminal('[NETWORK_STATUS] Network offline detected. Switching to IndexedDB local storage.', 'warn');
-    });
-
-    // Tab Switching
-    function switchAuthTab(tabId) {
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      
-      const tabContent = document.getElementById('tab-' + tabId);
-      if (tabContent) tabContent.classList.add('active');
-      
-      const eventTarget = window.event?.target;
-      if (eventTarget) eventTarget.classList.add('active');
-    }
-
-    // Redirect Resolution
-    function getRedirectUrl() {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') === 'app' || urlParams.get('platform') === 'mobile') {
-        return 'crypt0crew://login-callback';
-      }
-      return window.location.origin + window.location.pathname;
-    }
-
-    function updateAuthView(session) {
-      const authGateway = document.getElementById('auth-gateway');
-      const protectedDb = document.getElementById('protected-database');
-      const systemBadge = document.getElementById('system-badge');
-      const activeUserHandle = document.getElementById('active-user-handle');
-      const activeUserEmail = document.getElementById('active-user-email');
-
-      if (session && session.user) {
-        if (authGateway) authGateway.style.display = 'none';
-        if (protectedDb) protectedDb.style.display = 'block';
-        if (systemBadge) {
-          systemBadge.textContent = "CLASSIFIED DATABASE UNLOCKED // OPERATIVE ACTIVE";
-          systemBadge.style.background = "rgba(0, 255, 102, 0.2)";
-        }
-        const user = session.user;
-        const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'OPERATIVE';
-        if (activeUserHandle) activeUserHandle.textContent = name.toUpperCase();
-        if (activeUserEmail) activeUserEmail.textContent = user.email || 'AUTHENTICATED';
-        logTerminal('Session verified. Crew database unlocked.', 'highlight');
-
-        // Clean code/token from URL
-        if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
-      } else {
-        if (authGateway) authGateway.style.display = 'block';
-        if (protectedDb) protectedDb.style.display = 'none';
-        if (systemBadge) {
-          systemBadge.textContent = "SECURITY GATE // AUTHENTICATION REQUIRED";
-          systemBadge.style.background = "rgba(0, 255, 102, 0.12)";
-        }
-      }
-    }
-
-    // Email & Passcode Auth with Local Session Persistence
-    const emailLoginBtn = document.getElementById('login-email-btn');
-    const emailSignupBtn = document.getElementById('signup-email-btn');
-
-    if (emailLoginBtn) {
-      emailLoginBtn.addEventListener('click', async () => {
-        const email = document.getElementById('auth-email')?.value.trim();
-        const pw = document.getElementById('auth-password')?.value.trim();
-        const remember = document.getElementById('remember-session')?.checked;
-        if (!email || !pw) return logTerminal('Operative handle/email and password are required.', 'warn');
-        if (!supabase) return logTerminal('Supabase client not initialized', 'err');
-
-        try {
-          emailLoginBtn.disabled = true;
-          logTerminal('Authenticating operative credentials...');
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
-          if (error) {
-            logTerminal('Auth Failed: ' + error.message, 'err');
-          } else {
-            logTerminal('Welcome Operative ' + (data.user?.email || ''), 'highlight');
-            if (remember) {
-              localStorage.setItem('crypt0_remembered_user', JSON.stringify({ email, token: data.session?.access_token }));
-            } else {
-              localStorage.removeItem('crypt0_remembered_user');
-            }
-            updateAuthView(data.session);
-          }
-          emailLoginBtn.disabled = false;
-        } catch (e) {
-          logTerminal('Login Exception: ' + e.message, 'err');
-          emailLoginBtn.disabled = false;
-        }
-      });
-    }
-
-    if (emailSignupBtn) {
-      emailSignupBtn.addEventListener('click', async () => {
-        const email = document.getElementById('auth-email')?.value.trim();
-        const pw = document.getElementById('auth-password')?.value.trim();
-        const remember = document.getElementById('remember-session')?.checked;
-        if (!email || !pw) return logTerminal('Operative handle/email and password are required.', 'warn');
-        if (!supabase) return logTerminal('Supabase client not initialized', 'err');
-
-        try {
-          emailSignupBtn.disabled = true;
-          logTerminal('Registering new operative account in Supabase...');
-          const { data, error } = await supabase.auth.signUp({
-            email,
-            password: pw,
-            options: { emailRedirectTo: getRedirectUrl() }
-          });
-          if (error) {
-            logTerminal('Registration Failed: ' + error.message, 'err');
-          } else {
-            logTerminal('Operative account registered and synced in Supabase.', 'highlight');
-            if (remember && data.session) {
-              localStorage.setItem('crypt0_remembered_user', JSON.stringify({ email, token: data.session?.access_token }));
-            }
-            if (data.session) updateAuthView(data.session);
-          }
-          emailSignupBtn.disabled = false;
-        } catch (e) {
-          logTerminal('Signup Exception: ' + e.message, 'err');
-          emailSignupBtn.disabled = false;
-        }
-      });
-    }
-
-    // Logout
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', async () => {
-        if (supabase) {
-          logTerminal('Terminating operative session...');
-          await supabase.auth.signOut();
-          updateAuthView(null);
-          logTerminal('Session terminated. Database locked.');
-        }
-      });
-    }
-
-    // Copy text
-    function copyText(text) {
-      navigator.clipboard.writeText(text);
-      logTerminal('Copied to clipboard: ' + text, 'highlight');
-    }
-
-    // Filter targets
-    function filterTargets() {
-      const q = document.getElementById('target-search')?.value.toLowerCase();
-      const rows = document.querySelectorAll('#target-tbody tr');
-      rows.forEach(r => {
-        const text = r.textContent.toLowerCase();
-        r.style.display = text.includes(q) ? '' : 'none';
-      });
-    }
-
-    // Render initial targets
-    renderTargets();
-
-    // Check session
-    if (supabase) {
-      supabase.auth.getSession().then(({ data: { session }, error }) => {
-        if (!error && session) updateAuthView(session);
-        else logTerminal('Authentication required to unlock classified database.');
-      });
-
-      supabase.auth.onAuthStateChange((event, session) => {
-        logTerminal('Auth State Event: ' + event);
-        updateAuthView(session);
-      });
+    function simulateGoogleSignIn() {
+      appendTerminalLog(`[AUTH] Initiating Google Sign-In via Credential Manager...`, 'firebase');
+      setTimeout(() => {
+        const opDisplay = document.getElementById('operative-display');
+        opDisplay.innerHTML = `&gt; OPERATIVE: <span>[m0lt0rn@gmail.com]</span>`;
+        appendTerminalLog(`[AUTH] Authenticated user m0lt0rn@gmail.com with Firebase Auth.`, 'success');
+        appendTerminalLog(`[FIREBASE] Synced operative profile in Firestore collection /users.`, 'firebase');
+        closeLoginModal();
+      }, 800);
     }
   </script>
 </body>

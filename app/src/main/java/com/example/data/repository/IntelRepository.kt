@@ -197,20 +197,9 @@ class IntelRepository(
     // Export helpers
     suspend fun exportAllToGeneral(): Int {
         val internal = targetDao.getTargetsByScope(DatabaseScope.INTERNAL).first()
-        val external = targetDao.getTargetsByScope(DatabaseScope.EXTERNAL).first()
         var count = 0
-        (internal + external).distinctBy { if (it.ip.isNotBlank()) it.ip else it.name }.forEach { t ->
+        internal.distinctBy { if (it.ip.isNotBlank()) it.ip else it.name }.forEach { t ->
             targetDao.insertTarget(t.copy(id = 0, scope = DatabaseScope.GENERAL))
-            count++
-        }
-        return count
-    }
-
-    suspend fun exportExternalTo(destinationScope: DatabaseScope): Int {
-        val external = targetDao.getTargetsByScope(DatabaseScope.EXTERNAL).first()
-        var count = 0
-        external.forEach { t ->
-            targetDao.insertTarget(t.copy(id = 0, scope = destinationScope))
             count++
         }
         return count

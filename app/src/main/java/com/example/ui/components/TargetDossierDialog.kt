@@ -56,7 +56,9 @@ import com.example.ui.theme.MatrixTextSecondary
 @Composable
 fun TargetSpecsDialog(
     target: TargetEntity?,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSyncToCloud: ((TargetEntity) -> Unit)? = null,
+    onAnalyzeTactics: ((TargetEntity) -> Unit)? = null
 ) {
     if (target == null) return
     val context = LocalContext.current
@@ -343,6 +345,29 @@ fun TargetSpecsDialog(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
+
+            if (onAnalyzeTactics != null) {
+                HackerButton(
+                    text = "⚡ GEMINI TACTICAL ASSESSMENT",
+                    onClick = { onAnalyzeTactics(target) },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "gemini_tactical_btn"
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            if (onSyncToCloud != null) {
+                HackerButton(
+                    text = "▶ SYNC TO FIREBASE CLOUD",
+                    onClick = {
+                        onSyncToCloud(target)
+                        Toast.makeText(context, "Syncing ${target.ip} to Firebase...", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "sync_target_firebase_btn"
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             HackerButton(
                 text = "[DISMISS TARGET SPECS]",

@@ -78,6 +78,9 @@ fun MainScreen(viewModel: IntelViewModel) {
     val showAuthModal by viewModel.showAuthModal.collectAsState()
     val crewAccounts by viewModel.crewAccounts.collectAsState()
     val selectedTarget by viewModel.selectedTargetForDossier.collectAsState()
+    val aiTacticalAnalysis by viewModel.aiTacticalAnalysis.collectAsState()
+    val isAiAnalyzing by viewModel.isAiAnalyzing.collectAsState()
+    val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
 
     var showProfileDropdown by remember { mutableStateOf(false) }
 
@@ -255,7 +258,7 @@ fun MainScreen(viewModel: IntelViewModel) {
                         NavEntry(AppSection.SCREENSHOT_SCANNER, "Scanner", Icons.Default.CropFree, "nav_scanner"),
                         NavEntry(AppSection.INTEL_DATABASE, "Intel DB", Icons.Default.Storage, "nav_intel_db"),
                         NavEntry(AppSection.OPERATIONAL_METRICS, "Metrics", Icons.Default.Analytics, "nav_metrics"),
-                        NavEntry(AppSection.HISTORY_LOGS, "Logs / Activity", Icons.Default.Terminal, "nav_logs_activity")
+                        NavEntry(AppSection.HISTORY_LOGS, "Activity", Icons.Default.Terminal, "nav_logs_activity")
                     )
 
                     navItems.forEach { item ->
@@ -310,8 +313,26 @@ fun MainScreen(viewModel: IntelViewModel) {
         // Target Specs Intel Modal / Dialog (when clicked anywhere)
         TargetSpecsDialog(
             target = selectedTarget,
-            onDismiss = { viewModel.selectTargetForDossier(null) }
+            onDismiss = { viewModel.selectTargetForDossier(null) },
+            onSyncToCloud = { target -> viewModel.syncTargetToFirestore(target) },
+            onAnalyzeTactics = { target -> viewModel.analyzeTargetTacticsWithGemini(target) }
         )
+
+        // Gemini AI Tactical Breach Assessment Modal
+        if (aiTacticalAnalysis != null || isAiAnalyzing) {
+            com.example.ui.components.GeminiTacticalModal(
+                analysisText = aiTacticalAnalysis,
+                isLoading = isAiAnalyzing,
+                onSaveToCloud = {
+                    val reportText = aiTacticalAnalysis
+                    val target = selectedTarget
+                    if (!reportText.isNullOrBlank() && target != null) {
+                        viewModel.syncTargetToFirestore(target)
+                    }
+                },
+                onDismiss = { viewModel.clearAiAnalysis() }
+            )
+        }
 
         // Hacker Crew Authentication Modal
         if (showAuthModal) {
