@@ -106,7 +106,6 @@ fun IntelligenceDatabaseScreen(
     val genAuthError by viewModel.generalDbAuthError.collectAsState()
     val terminalAuthFeedback by viewModel.terminalAuthFeedback.collectAsState()
     val isCurrentUserAdmin by viewModel.isCurrentUserAdmin.collectAsState()
-    val isSupabaseLoading by viewModel.isSupabaseLoading.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
 
     val crewId by viewModel.crewIdInput.collectAsState()
@@ -544,7 +543,7 @@ fun IntelligenceDatabaseScreen(
                                             )
                                         }
                                         HackerButton(
-                                            text = if (isSupabaseLoading) "[CONNECTING...]" else "[CONNECT CREW SERVER]",
+                                            text = "[CONNECT CREW SERVER]",
                                             onClick = {
                                                 viewModel.authenticateGeneralDatabase { success, message ->
                                                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -639,7 +638,7 @@ fun IntelligenceDatabaseScreen(
                                             )
                                         }
                                         HackerButton(
-                                            text = if (isSupabaseLoading) "[CREATING...]" else "[REGISTER & BECOME CREW ADMIN]",
+                                            text = "[REGISTER & BECOME CREW ADMIN]",
                                             onClick = {
                                                 if (crewId.trim().isNotBlank() && crewPassword.trim().isNotBlank()) {
                                                     viewModel.createServerCrew(crewId.trim(), crewPassword.trim()) { success, message ->
